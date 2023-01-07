@@ -1,26 +1,18 @@
-#########################################################################################
-# Prepared for Gabor's Data Analysis
-#
-# Data Analysis for Business, Economics, and Policy
-# by Gabor Bekes and  Gabor Kezdi
+# CHAPTER 14
+# CH14 Airbnb
+# version x 2023-01-07
+# based on Data Analysis for Business, Economics, and Policy
+# by Gabor BEKES and  Gabor KEZDI 
 # Cambridge University Press 2021
+# 
+# License: Free to share, modify and use for educational purposes. Not to be used for business purposes.
 #
-# gabors-data-analysis.com 
-#
-# License: Free to share, modify and use for educational purposes. 
-# 	Not to be used for commercial purposes.
-
-# Chapter 14
-# CH14B Predicting AirBnB apartment prices: selecting a regression model
-# using the airbnb dataset
-# version 0.92 2021-07-05
-#########################################################################################
+###############################################################################################x
 
 
 
 # ------------------------------------------------------------------------------------------------------
 #### SET UP
-# It is advised to start a new session for every case study
 # CLEAR MEMORY
 rm(list=ls())
 
@@ -37,26 +29,6 @@ library(directlabels)
 library(knitr)
 library(cowplot)
 
-# option A: open material as project
-# option B: set working directory for da_case_studies
-#           example: setwd("C:/Users/bekes.gabor/Documents/github/da_case_studies/")
-
-# set data dir, load theme and functions
-source("ch00-tech-prep/theme_bg.R")
-source("ch00-tech-prep/da_helper_functions.R")
-
-use_case_dir <- "ch14-airbnb-reg/"
-
-# data used
-data_in <- use_case_dir
-
-data_out <- use_case_dir
-output <- paste0(use_case_dir,"output/")
-create_output_if_doesnt_exist(output)
-
-options(digits = 3)
-
-
 
 ########################################
 # PART I.
@@ -72,7 +44,7 @@ options(digits = 3)
 # Used area
 area <- "hackney"
 data <-
-  read_csv(paste0(data_in, "airbnb_", area, "_workfile_adj_book1.csv")) %>%
+  read_csv('https://raw.githubusercontent.com/peterduronelly/DA3-Coding-Examples/main/data/airbnb_hackney_workfile.csv') %>%
   mutate_if(is.character, factor)
 
 
@@ -87,6 +59,7 @@ to_filter <- sapply(data, function(x) sum(is.na(x)))
 to_filter[to_filter > 0]
 
 # what to do with missing values?
+
 # 1. drop if no target (already did)
 data <- data %>%
   drop_na(price)
@@ -126,7 +99,7 @@ table(data$flag_days_since)
 
 
 
-# redo features
+# 5. Add features: existing variables in different functional form
 # Create variables, measuring the time since: squared, cubic, logs
 data <- data %>%
   mutate(
