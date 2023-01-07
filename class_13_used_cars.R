@@ -236,10 +236,18 @@ data %>%
     summary()
 
 Hmisc::describe(data$age)
-  # note: Gmd (Gini’s mean difference) is the mean absolute difference between any two distinct elements of a vector
+  # "Gmd" (Gini’s mean difference) is the mean absolute difference between any two distinct elements of a vector
   # this is a measure of dispersion, the computation of which no measure of central tendency is necessary
+  
+  # "Info" is related to how continuous the variable is. The lowest information comes from a variable having only 
+  # one unique values following by a highly skewed binary variable. Info is reported to two decimal places. 
+  # 24 distinct values info = 0.997 => a really continuous variable
 
 
+Hmisc::describe(data$cond_likenew)
+  # two distinct values, 15 1s and the rest 0: info = 0.152
+Hmisc::describe(data$cylind6)
+  # two distinct values, 41 1s and the rest is 0: info = 0.37
 
 ## PLOTS
 
@@ -285,15 +293,17 @@ ggplot(data = data, aes(price)) +
 
 
 # lowess
-Ch13_p_age_lowess_R <- ggplot(data = data, aes(x=age, y=price)) +
-  geom_point( color = color[1], size = 1,  shape = 16, alpha = 0.8, show.legend=F, na.rm = TRUE) + 
-  geom_smooth(method="loess", se=F, colour=color[4], size=1, span=0.9) +
+ggplot(data = data, aes(x=age, y=price)) +
+  geom_point( color = "#330099", size = 1,  shape = 16, alpha = 0.8, show.legend=F, na.rm = TRUE) + 
+  geom_smooth(method="loess", se=F, colour="#000000", size=1, span=0.9) +
   labs(x = "Age (years)",y = "Price (US dollars)") +
-  theme_bg() +
+  theme_bw() +
   expand_limits(x = 0.01, y = 0.01) +
   scale_y_continuous(expand = c(0.01,0.01),limits = c(0,20000), breaks = seq(0,20000, 5000)) +
   scale_x_continuous(expand = c(0.01,0.01),limits = c(0,30), breaks = seq(0,30, 5))
-Ch13_p_age_lowess_R
+
+
+# color guide: http://www.cookbook-r.com/Graphs/Colors_(ggplot2)/#hexadecimal-color-code-chart
 
 
 ###################################
@@ -301,6 +311,8 @@ Ch13_p_age_lowess_R
 
 # Model 1: Linear regression on age
 model1 <- as.formula(price ~ age + agesq)
+# this is a 'formula' object:
+class(model1)
 # Models 2-5: Multiple linear regressions
 # note: condition - missing will be baseline for regs
 
@@ -318,6 +330,26 @@ reg2 <- lm(model2, data=data)
 reg3 <- lm(model3, data=data)
 reg4 <- lm(model4, data=data)
 reg5 <- lm(model5, data=data)
+
+# reg1 is an 'lm' object with some useful attributes we can extract
+
+reg1$coefficients
+summary(reg1, vcov = 'sandwich')
+
+logLik(reg1)
+
+# Find AIC and BIC from the data
+# official: AIC = 2k - 2*(max value of the likelihood function)
+# official: AIC = 2(k+1) - 2*(max value of the likelihood function)
+
+2*(reg1$rank+1) - 2*logLik(reg1)
+AIC(reg1)
+
+
+# BIC = k*ln(n) - 2*2*(max value of the likelihood function)
+# same correction is required with rank
+(reg1$rank+1)*log(nrow(data)) - 2*logLik(reg1)
+BIC(reg1)
 
 # evaluation of the models
 
@@ -338,51 +370,37 @@ for ( i in 1:length(models)){
   k[i] <- get(models[i])$rank -1
 }
 
+
+
 ############################################################
 # Linear regression evaluation
 
-# Model 1
-#stargazer(regr[[1]],  out=paste(output,"Ch13_reg_age_R.tex",sep=""), digits=2, float = F, no.space = T)
-
 # Lowess vs. quadratic (reg1) regression
-Ch13_p_age_quad_vs_lowess_R <- ggplot(data = data, aes(x=age)) +
-  geom_smooth(aes(y=price, colour=color[1]), method="loess", se=F, size=1) +
-  geom_line(aes(y=predict(reg1), colour=color[2]), size=1,lty=2) +
-  labs(x = "Age (years)",y = "Price (US dollars)") +
-  scale_color_manual(name="", values=c(color[1],color[2]),labels=c("Lowess in age","Quadratic in age")) +
-  theme_bg() +
+ggplot(data = data, aes(x=age)) +
+  geom_smooth(aes(y=price, colour="black"), method="loess", se=F, size=1) +
+  geom_line(aes(y=predict(reg1), colour="red"), size=1,lty=2) + 
+  labs(x = "Age (years)",y = "Price (US dollars)") + 
+  theme_bw() +
+  scale_color_manual(name = "", values=c("black","red"),labels=c("Lowess in age","Quadratic in age")) + 
   scale_x_continuous(limits = c(0,30), breaks = seq(0,30, 5)) +
-  scale_y_continuous(limits = c(0,20000), breaks = seq(0,20000, 5000)) +
+  scale_y_continuous(limits = c(0,20000), breaks = seq(0,20000, 5000)) + 
   theme(legend.position = c(0.7,0.7),
         legend.direction = "horizontal",
-        legend.background = element_blank(),
+         legend.background = element_blank(),
         legend.box.background = element_rect(color = "white"),
         legend.text = element_text(size = 10), 
         axis.title = element_text(size = 10))
 
-Ch13_p_age_quad_vs_lowess_R
-
-
 
 # All models
 eval <- data.frame(models, k, RSquared, RMSE, BIC)
+
+# gsub(pattern, replacement, x) 
+
 eval <- eval %>%
   mutate(models = paste0("(",gsub("reg","",models),")")) %>%
   rename(Model = models, "R-squared" = RSquared, "Training RMSE" = RMSE, "N predictors" = k)
-stargazer(eval, summary = F, out=paste(output,"ch13-table-4-bicrmse.tex",sep=""), digits=2, float = F, no.space = T)
-# old name: Ch13_bicrmse_R.tex
-# models 1-4 only, 5 too large
 
-# TODO 
-# use stargazer_r to get robust se
-# could be made nicer, also not producing it here
-stargazer_r(list(reg1, reg2, reg3, reg4 ), float=F, se = 'robust', digits=2, dep.var.caption = "Dep. var: price", keep.stat = c("rsq","n"),
-            out=paste0(output,"ch13-table-2-multireg1.tex",sep=""), no.space = T)
-stargazer(reg1, reg2, reg3, reg4 , align = T,   digits=2, dep.var.caption = "Dep. var: price", keep.stat = c("rsq","n"),
-            type="text", title = "Cars - regression", out=paste0(output,"ch13-table-2-multireg1.txt",sep=""), no.space = T)
-stargazer(reg1, reg2, reg3, reg4 , align = T,   digits=2, dep.var.caption = "Dep. var: price", keep.stat = c("rsq","n"),
-          type="html", title = "Cars - regression", out=paste0(output,"ch13-table-2-multireg1.html",sep=""), no.space = T)
-# old name: Ch13_multireg1_R.tex
 
 #################################################################
 # Cross-validation
@@ -425,11 +443,6 @@ cv_mat <- data.frame(rbind(cv1$resample[4], "Average"),
 colnames(cv_mat)<-c("Resample","Model1", "Model2", "Model3", "Model4", "Model5")
 cv_mat
 
-stargazer(cv_mat, summary = F, digits=0, float=F, out=paste(output,"ch13-table-5-cvmat.tex",sep=""))
-stargazer(cv_mat, summary = F, digits=0, float=F, type="text",  out=paste(output,"ch13-table-5-cvmat.txt",sep=""))
-# old name: Ch13_cvmat_R
-
-# NB THIS IS SLIGHTLY DIFFERENT TO ONE IN TEXTBOOK (DIFFERENT SEED)
 
 ###############################################################################
 # Prediction
@@ -443,52 +456,43 @@ new <- list(age=10, agesq=10^2,odometer=12,odometersq=12^2,SE=0,XLE=0, LE=1,
             dealer=0, cylind6=0, price=NA)
 
 
-# # Predict price with all predictors (Model3)
-# reg1 <- lm(model1, data=data)
-# # Standard errors of residuals
-# p1 <- predict(reg3, data)
-# resid_p1 <- p1-data$price
-# summary(resid_p1)
-# # predict value for newly added obs
-# pred1_new <- predict(reg1, newdata = new,se.fit = TRUE, interval = "prediction")
-# p1<- pred1_new$fit
-
 # Predict price with all predictors (Model1)
 reg1 <- lm(model1, data=data)
+
 # Standard errors of residuals
 p1 <- predict(reg1, data)
 resid_p1 <- p1-data$price
 summary(resid_p1)
+
 # predict value for newly added obs
 pred1_new <- predict(reg1, newdata = new,se.fit = TRUE, interval = "prediction")
 p1<- pred1_new$fit
 
+
 # Predict price with all predictors (Model3)
 reg3 <- lm(model3, data=data)
+
 # Standard errors of residuals
-p2 <- predict(reg3, data)
-resid_p2 <- p2-data$price
-summary(resid_p2)
+p3 <- predict(reg3, data)
+resid_p3 <- p3-data$price
+summary(resid_p3)
+
 # predict value for newly added obs
-pred2_new <- predict(reg3, newdata = new,se.fit = TRUE, interval = "prediction")
-p2<- pred2_new$fit
-pred2_new 
+pred3_new <- predict(reg3, newdata = new,se.fit = TRUE, interval = "prediction")
+p3<- pred3_new$fit
+pred3_new 
 
 #get model rmse
-data$p2a <- predict(reg3, data)
-rmse2 <- RMSE(data$p2a,data$price)
-rmse2
+data$p3a <- predict(reg3, data)
+rmse3 <- RMSE(data$p3a,data$price)
+rmse3
 
 # Result summary
-sum1 <- cbind(t(p1), t(p2))
+sum1 <- cbind(t(p1), t(p3))
 colnames(sum1) <- c('Model1', 'Model3')
 rownames(sum1) <- c('Predicted', 'PI_low (95%)', 'PI_high (95%)')
 
 sum1
-
-stargazer(sum1, summary = F, digits=0, float=F, out=paste(output,"ch13-table-3-pred-new.tex",sep=""))
-stargazer(sum1, summary = F, digits=0, float=F, type="text",  out=paste(output,"ch13-table-3-pred-new.txt",sep=""))
-# old name: Ch13_pred_R.txt
 
 # prediction
 
@@ -497,17 +501,11 @@ stargazer(sum1, summary = F, digits=0, float=F, type="text",  out=paste(output,"
 # predict value for newly added obs
 pred1_new80 <- predict(reg1, newdata = new, se.fit=TRUE, interval = "prediction", leve=0.8)
 p180<- pred1_new80$fit
-pred2_new80 <- predict(reg3, newdata = new,se.fit = TRUE, interval = "prediction", level=0.8)
-p280<- pred2_new80$fit
+pred3_new80 <- predict(reg3, newdata = new,se.fit = TRUE, interval = "prediction", level=0.8)
+p380<- pred3_new80$fit
 
 # Result summary
-sum2 <- cbind(t(p180), t(p280))
+sum2 <- cbind(t(p180), t(p380))
 colnames(sum2) <- c('Model1', 'Model3')
 rownames(sum2) <- c('Predicted', 'PI_low (80%)', 'PI_high (80%)')
 sum2
-
- stargazer(sum2, summary = F, digits=0, float=F, out=paste(output,"ch13-table-3-pred-new80.tex",sep=""))
- stargazer(sum2, summary = F, digits=0, float=F, type="text",  out=paste(output,"ch13-table-3-pred-new80.txt",sep=""))
-
- # in book sum1 and sum2 are combined in Table 3
- 
