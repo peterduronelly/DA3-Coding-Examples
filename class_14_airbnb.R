@@ -4,6 +4,7 @@
 # based on Data Analysis for Business, Economics, and Policy
 # by Gabor BEKES and  Gabor KEZDI 
 # Cambridge University Press 2021
+# and on modifications by Agoston Reguly (github.com/regulyagoston)
 # 
 # License: Free to share, modify and use for educational purposes. Not to be used for business purposes.
 #
@@ -102,12 +103,6 @@ price_diff_by_variables2 <- function(df, factor_var, dummy_var, factor_lab, dumm
       legend.key.size = unit(x = 0.4, units = "cm")
     )
 }
-
-mse_lev <- function(pred, y) {
-  # Mean Squared Error for log models
-  (mean((pred - y)^2, na.rm=T))
-}
-
 
 
 ################################################################################
@@ -278,7 +273,7 @@ ggplot(data = datau, aes(x=ln_price)) +
     aes(y = (..count..)/sum(..count..)), 
     bins = 20, fill = 'black', col = 'white', size = 0.25, alpha = 0.8) + 
   theme_bw() + 
-  labs(title = "Price distribution", x = "price in USD", y = "percent") +
+  labs(title = "Log price distribution", x = "price in USD", y = "percent") +
   theme(plot.title = element_text(size = rel(1)))+ 
   scale_x_continuous(breaks = seq(2.4,6.6, 0.6)) + 
   scale_y_continuous(
@@ -287,14 +282,14 @@ ggplot(data = datau, aes(x=ln_price)) +
     labels = scales::percent_format(1))
 
 # lnprice: original values, log scale in x-axis
-require(scales)
+# require(scales)
 ggplot(data = datau, aes(price)) + 
   geom_histogram(
     aes(y = (..count..)/sum(..count..)), 
     bins = 20, 
     fill = 'black', col = 'white', size = 0.25, alpha = 0.8) + 
   theme_bw() + 
-  labs(title = "Price distribution log price", x = "price in USD (log scale)", y = "percent") +
+  labs(title = "Price distribution on log scale", x = "price in USD (log scale)", y = "percent") +
   theme(plot.title = element_text(size = rel(1))) + 
   scale_x_log10() + 
   annotation_logticks(sides = 'b') + 
@@ -574,7 +569,7 @@ lasso_cv_metrics <- lasso_model$results %>%
 
 lasso_metrics <- tibble(
   model='LASSO',
-  model = nrow(lasso_coeffs_nz), 
+  coefficients = nrow(lasso_coeffs_nz), 
   BIC = NA, 
   R2 =  lasso_cv_metrics[2][[1]], 
   RMSE_train = NA,
@@ -583,140 +578,104 @@ lasso_metrics <- tibble(
 cv_result <- rbind(cv_result, lasso_metrics)
 
 
-########################################
+################################################################################
 # PART III - DIAGNOSTICS
-########################################
+################################################################################
+
+# 1. Performance on the holdout set
+# model 3, model 7 & lasso
+
+yvar <- "price"
+
+# m3
+# estimate regression on the whole work data
+formula <- formula(paste0(yvar,modellev3))
+m3 <- lm(formula, data = data_work)
+# predict on the holdout set
+m3_pred <- predict(m3, newdata = data_holdout)
+m3_rmse = RMSE(m3_pred, data_holdout$price)
+
+# m7
+# estimate regression on the whole work data
+formula <- formula(paste0(yvar,modellev7))
+m7 = lm(formula, data = data_work)
+# predict on the holdout set
+m7_pred = predict(m7, newdata = data_holdout)
+m7_rmse = RMSE(m3_pred, data_holdout$price)
+
+# lasso
+ml_pred <- predict(lasso_model, newdata = data_holdout)
+ml_rmse <- RMSE(ml_pred, data_holdout$price)
+
+results <- rbind(m3_rmse, m7_rmse, ml_rmse)
+rownames(results) <- c('Model 3','Model 7','LASSO')
+colnames(results) <- c('RMSE on hold-out sample')
+results
+
+# 2. Plot your results for lasso
+
+data_holdout$ml_pred <- ml_pred
+
+ggplot( 
+  data_holdout , aes( y = price , x = ml_pred ) ) +
+  geom_point( 
+    size = 1 , 
+    color = 'black' ) +
+  geom_abline( 
+    intercept = 0, 
+    slope = 1, 
+    size = 1, 
+    color = 'black' , 
+    linetype = 'dashed'
+  ) +
+  xlim(-1,max(data_holdout$price))+
+  ylim(-1,max(data_holdout$price))+
+  labs(
+    x='Predicted price (US$)',
+    y='Price (US$)', 
+    title = "Predicted vs actual price")+
+  theme_bw()
+
+# 3. Predict and plot with model 7
+
+m7_pPI <- predict( m7 , newdata = data_holdout , interval = 'predict' , level = 0.8 )
+m7_pPI <- m7_pPI %>% as.matrix() %>% as.data.frame()
+
+data_holdout$m7_pred <- m7_pPI$fit
+data_holdout$m7_pred_pi80_l <- m7_pPI$lwr
+data_holdout$m7_pred_pi80_h <- m7_pPI$upr
+
+pred_by_accommodates <- data_holdout %>% 
+  select( n_accommodates , m7_pred , m7_pred_pi80_l, m7_pred_pi80_h ) %>% 
+  group_by( n_accommodates ) %>% 
+  summarise(
+    fit = mean(m7_pred, na.rm=TRUE), 
+    pred_lwr = mean(m7_pred_pi80_l, na.rm=TRUE), 
+    pred_upr = mean(m7_pred_pi80_h, na.rm=TRUE))
+
+ggplot(
+  pred_by_accommodates, aes(x=factor(n_accommodates))) +
+  geom_col(
+    aes(y = fit), 
+    fill = '#990033', 
+    alpha = 0.8) + 
+  geom_errorbar(
+    aes(
+      ymin=pred_lwr, 
+      ymax=pred_upr  
+      ),
+    width=.3,size=1) +
+  scale_y_continuous(
+    name = "Predicted price (US dollars)"
+    ) +
+  scale_x_discrete(
+    name = "Accomodates (Persons)"
+    ) +
+  labs(title = 'Predictions with 80% confidence intervals') +
+  theme_bw() 
+
+# 4. How do lasso coefficients change as lambda changes? 
+
+plot(lasso_model$finalModel , xvar = "lambda", label = TRUE)
 
 
-
-###################################################
-# Diagnsotics #
-###################################################
-model3_level <- model_results_cv[["modellev3"]][["model_work_data"]]
-model7_level <- model_results_cv[["modellev7"]][["model_work_data"]]
-
-
-# look at holdout RMSE
-model7_level_work_rmse <- mse_lev(predict(model7_level, newdata = data_work), data_work[,"price"] %>% pull)**(1/2)
-model7_level_holdout_rmse <- mse_lev(predict(model7_level, newdata = data_holdout), data_holdout[,"price"] %>% pull)**(1/2)
-model7_level_holdout_rmse
-
-###################################################
-# FIGURES FOR FITTED VS ACTUAL OUTCOME VARIABLES #
-###################################################
-
-# Target variable
-Ylev <- data_holdout[["price"]]
-
-meanY <-mean(Ylev)
-sdY <- sd(Ylev)
-meanY_m2SE <- meanY -1.96 * sdY
-meanY_p2SE <- meanY + 1.96 * sdY
-Y5p <- quantile(Ylev, 0.05, na.rm=TRUE)
-Y95p <- quantile(Ylev, 0.95, na.rm=TRUE)
-
-# Predicted values
-predictionlev_holdout_pred <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="predict")) %>%
-  rename(pred_lwr = lwr, pred_upr = upr)
-predictionlev_holdout_conf <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="confidence")) %>%
-  rename(conf_lwr = lwr, conf_upr = upr)
-
-predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
-                               predictionlev_holdout_pred,
-                               predictionlev_holdout_conf[,c("conf_lwr","conf_upr")])
-
-
-# Create data frame with the real and predicted values
-d <- data.frame(ylev=Ylev, predlev=predictionlev_holdout[,"fit"] )
-# Check the differences
-d$elev <- d$ylev - d$predlev
-
-# Plot predicted vs price
-level_vs_pred <- ggplot(data = d) +
-  geom_point(aes(y=ylev, x=predlev), color = color[1], size = 1,
-             shape = 16, alpha = 0.7, show.legend=FALSE, na.rm=TRUE) +
-  #geom_smooth(aes(y=ylev, x=predlev), method="lm", color=color[2], se=F, size=0.8, na.rm=T)+
-  geom_segment(aes(x = 0, y = 0, xend = 350, yend =350), size=0.5, color=color[2], linetype=2) +
-  coord_cartesian(xlim = c(0, 350), ylim = c(0, 350)) +
-  scale_x_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
-  scale_y_continuous(expand = c(0.01,0.01),limits=c(0, 350), breaks=seq(0, 350, by=50)) +
-  labs(y = "Price (US dollars)", x = "Predicted price  (US dollars)") +
-  theme_bg() 
-level_vs_pred
-save_fig("ch14-figure-8a-level-vs-pred", output, "small")
-
-
-# Redo predicted values at 80% PI
-predictionlev_holdout_pred <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="predict", level=0.8)) %>%
-  rename(pred_lwr = lwr, pred_upr = upr)
-predictionlev_holdout_conf <- as.data.frame(predict(model7_level, newdata = data_holdout, interval="confidence", level=0.8)) %>%
-  rename(conf_lwr = lwr, conf_upr = upr)
-
-predictionlev_holdout <- cbind(data_holdout[,c("price","n_accommodates")],
-                               predictionlev_holdout_pred,
-                               predictionlev_holdout_conf[,c("conf_lwr","conf_upr")])
-
-summary(predictionlev_holdout_pred)
-
-predictionlev_holdout_summary <-
-  predictionlev_holdout %>%
-  group_by(n_accommodates) %>%
-  dplyr::summarise(fit = mean(fit, na.rm=TRUE), pred_lwr = mean(pred_lwr, na.rm=TRUE), pred_upr = mean(pred_upr, na.rm=TRUE),
-            conf_lwr = mean(conf_lwr, na.rm=TRUE), conf_upr = mean(conf_upr, na.rm=TRUE))
-
-kable(x = predictionlev_holdout_summary, format = "latex", booktabs=TRUE,  digits = 3, row.names = FALSE,
-      linesep = "", col.names = c("Accomodates","Prediction","Pred. interval lower",
-                                  "Pred. interval upper","Conf.interval lower","Conf.interval upper")) %>%
-  cat(.,file= paste0(output, "modellev7_holdout_summary.tex"))
-
-
-F14_CI_n_accomodate <- ggplot(predictionlev_holdout_summary, aes(x=factor(n_accommodates))) +
-  geom_bar(aes(y = fit ), stat="identity",  fill = color[1], alpha=0.7 ) +
-  geom_errorbar(aes(ymin=pred_lwr, ymax=pred_upr, color = "Pred. interval"),width=.2) +
-  #geom_errorbar(aes(ymin=conf_lwr, ymax=conf_upr, color = "Conf. interval"),width=.2) +
-  scale_y_continuous(name = "Predicted price (US dollars)") +
-  scale_x_discrete(name = "Accomodates (Persons)") +
-  scale_color_manual(values=c(color[2], color[2])) +
-  theme_bg() +
-  theme(legend.title= element_blank(),legend.position="none")
-F14_CI_n_accomodate
-save_fig("ch14-figure-8b-ci-n-accomodate", output, "small")
-
-
-
-#NOT USED
-# Density chart (not in book)
-g3 <- ggplot(data = datau, aes(x=price)) +
-  geom_density(aes(color=f_room_type, fill=f_room_type),  na.rm =TRUE, alpha= 0.3) +
-  labs(x="Price (US dollars)", y="Density", color = "") +
-  scale_color_manual(name="",
-                     values=c(color[2],color[1], color[3]),
-                     labels=c("Entire home/apt","Private room", "Shared room")) +
-  scale_fill_manual(name="",
-                    values=c(color[2],color[1], color[3]),
-                    labels=c("Entire home/apt","Private room", "Shared room")) +
-  theme_bg() 
-  theme(legend.position = c(0.7,0.7),
-        legend.direction = "horizontal",
-        legend.background = element_blank(),
-        legend.box.background = element_rect(color = "white"))
-g3
-
-
-# Barchart  (not in book)
-plot4 <- ggplot(data = datau, aes(x = factor(n_accommodates), color = f_room_type, fill = f_room_type)) +
-  geom_bar(alpha=0.8, na.rm=T, width = 0.8) +
-  scale_color_manual(name="",
-                     values=c(color[2],color[1], color[3])) +
-  scale_fill_manual(name="",
-                    values=c(color[2],color[1],  color[3])) +
-  labs(x = "Accomodates (Persons)",y = "Frequency")+
-  theme_bg() 
-  theme(legend.position = "bottom")
-plot4
-
-
-
-
-#ch14-table-1-levlog-pred
-#ch14-table-3-fit-level
