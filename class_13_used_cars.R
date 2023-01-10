@@ -1,9 +1,10 @@
 # CHAPTER 13
 # CH11 Used cars
-# version 0.9.2 2021-01-06
+# version x 2023-01-05
 # based on Data Analysis for Business, Economics, and Policy
 # by Gabor BEKES and  Gabor KEZDI 
 # Cambridge University Press 2021
+# and on modifications by Agoston Reguly (github.com/regulyagoston)
 # 
 # License: Free to share, modify and use for educational purposes. Not to be used for business purposes.
 #
@@ -24,12 +25,7 @@ library(stargazer)
 library(caret)
 library(grid)
 library(modelsummary)
-
-
-
-# source("ch00-tech-prep/theme_bg.R")
-# source("ch00-tech-prep/da_helper_functions.R")
-
+library(scales)
 
 
 ################################################################################
@@ -193,6 +189,16 @@ data %>%
   group_by(area) %>%
   dplyr::summarize(frequency=n(), mean=mean(price))
 
+# are prices in Chicago really higher than in LA? 
+
+t.test(data %>% 
+         filter(area == "chicago") %>% 
+         select(price), 
+       data %>% 
+         filter(area == "los angeles") %>% 
+         select(price)
+       )
+
 # focus only on Chicago
 data <- data %>%
   filter(area=="chicago")
@@ -279,13 +285,14 @@ ggplot(data = data, aes(x = lnprice)) +
 
 # another way to plot log price is to convert the x-axis scale to logs and format it accordingly
 
-require(scales)
+
 ggplot(data = data, aes(price)) + 
   geom_histogram(bins = 20, fill = 'black', col = 'white', size = 0.25, alpha = 0.8) + 
   theme_bw() + 
   labs(title = "Price distribution of used cars", x = "price in USD (log scale)", y = "frequency") +
   theme(plot.title = element_text(size = rel(1))) + 
-  scale_x_log10() + annotation_logticks(sides = 'b')
+  scale_x_log10() + 
+  annotation_logticks(sides = 'b')
  
 
 ###############################################################################
