@@ -347,7 +347,7 @@ logLik(reg1)
 
 # Find AIC and BIC from the data
 # official: AIC = 2k - 2*(max value of the likelihood function)
-# official: AIC = 2(k+1) - 2*(max value of the likelihood function)
+# R: AIC = 2(k+1) - 2*(max value of the likelihood function)
 
 2*(reg1$rank+1) - 2*logLik(reg1)
 AIC(reg1)
