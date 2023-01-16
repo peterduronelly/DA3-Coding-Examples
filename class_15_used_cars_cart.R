@@ -145,6 +145,7 @@ t.test(data_train$price, data_test$price)
 var.test(data_train$price, data_test$price, alternative = "two.sided") 
   # default is two-sided 
 
+
 summary(data_train$age)
 summary(data_test$age)
 
@@ -256,7 +257,7 @@ cart3 <- train(
 
 summary(cart3)
 pred_cart3_test <- predict(cart3, data_test)
-rmse_cart3 <- sqrt(mean((pred_cart3 - data_test$price)^2))
+rmse_cart3 <- sqrt(mean((pred_cart3_test - data_test$price)^2))
 
 # visualize
 # tree graph
@@ -265,6 +266,7 @@ rpart.plot(cart3$finalModel, tweak=1.2, digits=-1, extra=1)
 # scatterplot with step function - train data
 plot_helper_df$yend <- predict(cart3, plot_helper_df)
 pred_cart3_train <- predict(cart3, data_train)
+
 
 ggplot(
   data = data_train, 
@@ -342,7 +344,7 @@ ggplot(data = data_train, aes(x=age , y=price)) +
 # ols  with multiple variables
 model2 <- formula(price ~ age + odometer + LE + XLE + SE + cond_excellent + cond_good + cylind6 + dealer+chicago)
 linreg2 <- lm(model2 , data=data_train)
-summary(linreg2)
+summary(linreg2) # check out the 'Chicago' variable; remember what we saw on the t.test for the Chicago vs the LA subset?
 
 pred_linreg2_test <- predict(linreg2, data_test, na.action = na.pass)
 rmse_linreg2 <- sqrt(mean((pred_linreg2_test - data_test$price)^2))
@@ -357,38 +359,33 @@ pred_linreg3_test <- predict(linreg3, data_test, na.action = na.pass)
 rmse_linreg3 <- sqrt(mean((pred_linreg3_test - data_test$price)^2))
 rmse_linreg3
 
-#############
-# Tree
 
-# Splits at four levels, for illustrative purposes
-# (make sure it stops by setting "maxdepth" to 3)
+# trees
+
+# splits at four levels, for illustrative purposes
+# (make sure it stops by setting "maxdepth" to 4)
 cart4 <- train(
-  model2, data=data_train, method = "rpart2",
+  model2, 
+  data=data_train, 
+  method = "rpart2",
   trControl = trainControl(method="none"),
   tuneGrid= data.frame(maxdepth=4),
   na.action = na.pass)
 
-# alternative to show the use of cp.
-# same outcome
-cart4 <- train(
-  model2, data=data_train, method = "rpart",
-  trControl = trainControl(method="none"),
-  tuneGrid= expand.grid(cp = 0.01),
-  control = rpart.control(minsplit = 20),
-  na.action = na.pass)
+summary(cart4) # too complex to read! 
 
+# we only predict for the test set to calculate RMSE
+pred_cart4_test <- predict(cart4, data_test, na.action = na.pass)
+rmse_cart4 <- sqrt(mean((pred_cart4_test - data_test$price)^2))
 
-
-summary(cart4)
-pred_cart4 <- predict(cart4, data_test, na.action = na.pass)
-rmse_cart4 <- sqrt(mean((pred_cart4 - data_test$price)^2))
-
-
-# Tree graph
+# visualize
+# tree graph
 rpart.plot(cart4$finalModel, tweak=1.2, digits=-1, extra=1)
-#save_tree_plot(cart4$finalModel, "ch15_usedcars_tree4", output, "large")
-save_tree_plot(cart4$finalModel, "ch15-figure-5a-usedcars-tree4", output, "large")
 
+
+# instead of 'maxdepth' we control 'cp'
+# the difference between method = 'rpart' & method = 'rpart2'
+# is rpart tuning parameter is 'cp', that is rpart2 is 'maxdepth'
 cart5 <- train(
   model2, data=data_train, method = "rpart",
   trControl = trainControl(method="none"),
@@ -399,111 +396,106 @@ cart5 <- train(
 print(cart5)
 
 summary(cart5)
-pred_cart5 <- predict(cart5, data_test, na.action = na.pass)
-rmse_cart5 <- sqrt(mean((pred_cart5 - data_test$price)^2))
+pred_cart5_test <- predict(cart5, data_test, na.action = na.pass)
+rmse_cart5 <- sqrt(mean((pred_cart5_test - data_test$price)^2))
 
-# Tree graph
+# visualize
+# tree graph
 rpart.plot(cart5$finalModel, tweak=1.2, digits=-1, extra=1)
-#save_tree_plot(cart5$finalModel, "ch15_usedcars_tree5", output, "verylarge")
-save_tree_plot(cart5$finalModel, "ch15-figure-5b-usedcars-tree5", output, "verylarge")
-############################
-# prune the tree
-############################
 
 
-# build very large tree
+# PRUNING TREES
+
+# build A very large tree
 
 cart6 <- train(
   model2, data=data_train, method = "rpart",
   trControl = trainControl(method="none"),
-  tuneGrid= expand.grid(cp = 0.0001),
+  tuneGrid= expand.grid(cp = 0.0001), # low cp value implies many splits! 
   control = rpart.control(minsplit = 4),
   na.action = na.pass)
 
-#print(cart5)
-# Tree graph
-rpart.plot(cart6$finalModel, tweak=1.2, digits=-1, extra=1)
-#save_tree_plot(cart6$finalModel, "ch15_usedcars_tree6", output, "verylarge")
-save_tree_plot(cart6$finalModel, "ch15-figure-6a-usedcars-tree6", output, "verylarge")
+# visualize
+# tree graph
+rpart.plot(cart6$finalModel, tweak=1.2, digits=-1, extra=1) # we have built a monster!!!
 
-summary(cart6)
-pred_cart6 <- predict(cart6, data_test, na.action = na.pass)
-rmse_cart6 <- sqrt(mean((pred_cart6 - data_test$price)^2))
-rmse_cart6
-
+pred_cart6_test <- predict(cart6, data_test, na.action = na.pass)
+rmse_cart6 <- sqrt(mean((pred_cart6_test - data_test$price)^2))
 
 # take the last model (large tree) and prunce (cut back)
 pfit <-prune(cart6$finalModel, cp=0.005 )
+# determines a nested sequence of subtrees of the supplied rpart object by recursively snipping off
+# the least important splits, based on the complexity parameter (cp).
+
 summary(pfit)
 
 # getting rmse
-pred_cart7 <- predict(pfit, data_test, na.action = na.pass)
-rmse_cart7 <- sqrt(mean((pred_cart7 - data_test$price)^2))
+pred_cart7_test <- predict(pfit, data_test, na.action = na.pass)
+rmse_cart7 <- sqrt(mean((pred_cart7_test - data_test$price)^2))
 rmse_cart7
 
-printcp(pfit)
-plotcp(pfit) # doesnt work
-# TODO why? - most likely because it is trained with caret
+summary(pfit)
 
-# Tree graph
+# visualize
+# tree graph
 rpart.plot(pfit, digits=-1, extra=1, tweak=1)
-#save_tree_plot(pfit, "ch15_usedcars_tree6prune", output, "large")
-save_tree_plot(pfit, "ch15-figure-6b-usedcars-tree6prune", output, "large")
+
+# the print() method displays the improvement with different pruning parameters
+# if we want to stop at 0.005 improvement, we need to cut back the tree until it has 
+# no more than 9 split actions (10 end nodes are the result of 9 splits)
+printcp(pfit)
 
 
-########x summary perfromance table
+# PERFORMANCE SUMMARY
 
-tab_rmse <- data.frame(
-  "Model" = c("CART1", "CART2","CART3","OLS"),
-  "Describe" = c("2 term. nodes", "4 term. nodes","5 term. nodes","1 variable only"),
-  "RMSE" = c(rmse_cart1, rmse_cart2, rmse_cart3, rmse_linreg1)
-)
-
-print(xtable(tab_rmse, type = "latex"), file = paste0(output, "ch15-table-2-rmse.tex"),
-      include.rownames=FALSE, booktabs=TRUE, floating = FALSE)
-
-
-
-#v3
-tab_rmse <- data.frame(
+df_rmse <- data.frame(
   "Model" = c("CART1", "CART2","CART3","CART4", "CART5","CART6","CART7", "OLS multivar", "OLS extended"),
   "Describe" = c("2 term. nodes", "4 term. nodes","5 term. nodes","cp = 0.01","cp = 0.002","cp = 0.0001","pruned", "multi-var", "w/ squared vars"),
   "RMSE" = c(rmse_cart1, rmse_cart2, rmse_cart3, rmse_cart4,rmse_cart5,rmse_cart6,rmse_cart7, rmse_linreg2, rmse_linreg3)
 )
 
-print(xtable(tab_rmse, type = "latex"), file = paste0(output, "ch15-table-5-rmse-ext.tex"),
-      include.rownames=FALSE, booktabs=TRUE, floating = FALSE)
+arrange( df_rmse , RMSE )
 
-#############
-# Varimp
+
+# VARIABLE IMPORTANCE
 
 cart4_var_imp <- varImp(cart4)$importance
-cart4_var_imp_df <-
-  data.frame(varname = rownames(cart4_var_imp),imp = cart4_var_imp$Overall) %>%
-  mutate(varname = gsub("cond_", "Condition:", varname) ) %>%
-  arrange(desc(imp)) %>%
-  mutate(imp_percentage = imp/sum(imp))
+arrange(cart4_var_imp, desc(Overall))
 
-cart4_var_imp_plot <- ggplot(cart4_var_imp_df, aes(x=reorder(varname, imp), y=imp_percentage)) +
-  geom_point(color=color[1], size=2) +
-  geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color=color[1], size=1.5) +
+cart4_var_imp_df <- data.frame(
+  varname = rownames(cart4_var_imp),
+  imp = cart4_var_imp$Overall) %>%
+    mutate(varname = gsub("cond_", "Condition:", varname) ) %>%
+    arrange(desc(imp)) %>%
+    mutate(imp_percentage = imp/sum(imp)
+           )
+
+ggplot(cart4_var_imp_df, 
+       aes(x=reorder(varname, imp), 
+           y=imp_percentage)) +
+  geom_point(color='#990033', size=2) +
+  geom_segment(
+    aes(x=varname,xend=varname,y=0,yend=imp_percentage), 
+    color='#990033', size=1.5) +
   ylab("Importance") +
   xlab("Variable Name") +
   coord_flip() +
   scale_y_continuous(expand = c(0.01,0.01),labels = scales::percent_format(accuracy = 1)) +
-  theme_bg()
-cart4_var_imp_plot
-#save_fig("ch15_varimp_cart4", output, "large")
-save_fig("ch15-figure-7-varimp-cart4", output, "large")
+  theme_bw()
 
-
-############################################################x
 
 ## a note for varimp 
 
 # https://topepo.github.io/caret/variable-importance.html
-# Recursive Partitioning: The reduction in the loss function (e.g. mean squared error) attributed to each variable at each split is tabulated and the sum is returned. Also, since there may be candidate variables that are important but are not used in a split, the top competing variables are also tabulated at each split. This can be turned off using the maxcompete argument in rpart.control.
+# Recursive Partitioning: The reduction in the loss function (e.g. mean squared error) 
+#   attributed to each variable at each split is tabulated and the sum is returned. 
+#   Also, since there may be candidate variables that are important but are not used in a split,
+#   the top competing variables are also tabulated at each split. 
+#   This can be turned off using the maxcompete argument in rpart.control.
 # To avoid this, we can rerun cart4 with a new control fn to ensure matching 
+
+# the 'maxcompete' argument: the number of competitor splits retained in the output. It is useful to know not
+# just which split was chosen, but which variable came in second, third, etc.
   
 cart4 <- train(
   model2, data=data_train, method = "rpart",
@@ -512,19 +504,23 @@ cart4 <- train(
   control = rpart.control(minsplit = 20, maxcompete = FALSE),
   na.action = na.pass)
 
-  cart4_var_imp <- varImp(cart4)$importance
-  cart4_var_imp_df <-
-    data.frame(varname = rownames(cart4_var_imp),imp = cart4_var_imp$Overall) %>%
-    mutate(varname = gsub("cond_", "Condition:", varname) ) %>%
-    arrange(desc(imp)) %>%
-    mutate(imp_percentage = imp/sum(imp))
+cart4_var_imp <- varImp(cart4)$importance
+cart4_var_imp_df <-
+  data.frame(varname = rownames(cart4_var_imp),imp = cart4_var_imp$Overall) %>%
+  mutate(varname = gsub("cond_", "Condition:", varname) ) %>%
+  arrange(desc(imp)) %>%
+  mutate(imp_percentage = imp/sum(imp))
   
-  cart4_var_imp_plot <- ggplot(cart4_var_imp_df, aes(x=reorder(varname, imp), y=imp_percentage)) +
-    geom_point(color=color[1], size=2) +
-    geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color=color[1], size=1.5) +
-    ylab("Importance") +
-    xlab("Variable Name") +
-    coord_flip() +
-    scale_y_continuous(expand = c(0.01,0.01),labels = scales::percent_format(accuracy = 1)) +
-    theme_bg()
-  cart4_var_imp_plot_rev
+# a very 'skinny' graph about which variables are important in this myopic model
+ggplot(cart4_var_imp_df, 
+       aes(x=reorder(varname, imp), 
+           y=imp_percentage)) +
+  geom_point(color='#990033', size=2) +
+  geom_segment(
+    aes(x=varname,xend=varname,y=0,yend=imp_percentage), 
+    color='#990033', size=1.5) +
+  ylab("Importance") +
+  xlab("Variable Name") +
+  coord_flip() +
+  scale_y_continuous(expand = c(0.01,0.01),labels = scales::percent_format(accuracy = 1)) +
+  theme_bw()
