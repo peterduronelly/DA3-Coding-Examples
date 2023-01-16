@@ -249,7 +249,6 @@ Hmisc::describe(data$age)
   # one unique values following by a highly skewed binary variable. Info is reported to two decimal places. 
   # 24 distinct values info = 0.997 => a really continuous variable
 
-
 Hmisc::describe(data$cond_likenew)
   # two distinct values, 15 1s and the rest 0: info = 0.152
 Hmisc::describe(data$cylind6)

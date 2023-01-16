@@ -30,3 +30,12 @@ Lasso:
 
     Diagnostics on the holdout set.<br>
     Plotting prediction results.
+
+3. **class 13, used cars**<br>
+Data manipulation as in class 13<br>
+Basic regression trees<br>
+Plotting trees and regression results as step functions<br>
+Building more complex regression trees with control parameters
+Pruning
+Comparing tree-based and OLS models
+Variable importance: with final only and with competing variables
