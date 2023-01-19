@@ -129,7 +129,7 @@ data <- data %>%
     f_bathroom=ifelse(is.na(f_bathroom),1, f_bathroom),
     f_minimum_nights=ifelse(is.na(f_minimum_nights),1, f_minimum_nights),
     f_number_of_reviews=ifelse(is.na(f_number_of_reviews),1, f_number_of_reviews),
-    ln_beds=ifelse(is.na(ln_beds),0, ln_beds),
+    ln_beds=ifelse(is.na(ln_beds),0, ln_beds)
   )
 
 
@@ -605,7 +605,7 @@ formula <- formula(paste0(yvar,modellev7))
 m7 = lm(formula, data = data_work)
 # predict on the holdout set
 m7_pred = predict(m7, newdata = data_holdout)
-m7_rmse = RMSE(m3_pred, data_holdout$price)
+m7_rmse = RMSE(m7_pred, data_holdout$price)
 
 
 # lasso
@@ -660,10 +660,9 @@ pred_by_accommodates <- data_holdout %>%
 
 ggplot(
   pred_by_accommodates, aes(x=factor(n_accommodates))) +
-  geom_col(
-    aes(y = fit), 
-    fill = '#990033', 
-    alpha = 0.8) + 
+  geom_point( aes(y = fit), 
+    size = 10 , 
+    color = 'black' ) +  
   geom_errorbar(
     aes(
       ymin=pred_lwr, 
