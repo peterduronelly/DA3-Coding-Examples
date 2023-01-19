@@ -32,24 +32,6 @@ library(cowplot)
 library(scales)
 
 
-########################################
-# PART I - EDA
-########################################
-
-# !!! make sure you have run ch14_airbnb_prepare.R before
-
-
-#############
-# Load data #
-#############
-
-# Used area
-area <- "hackney"
-data <-
-  read_csv('https://raw.githubusercontent.com/peterduronelly/DA3-Coding-Examples/main/data/airbnb_hackney_workfile.csv') %>%
-  mutate_if(is.character, factor)
-
-
 ################################################################################
 # UDF
 ################################################################################
@@ -105,6 +87,21 @@ price_diff_by_variables2 <- function(df, factor_var, dummy_var, factor_lab, dumm
 }
 
 
+
+################################################################################
+# PART I - EDA
+################################################################################
+
+
+
+# Load data
+
+
+# Used area
+data <-
+  read_csv('https://raw.githubusercontent.com/peterduronelly/DA3-Coding-Examples/main/data/airbnb_hackney_workfile.csv') %>%
+  mutate_if(is.character, factor)
+
 ################################################################################
 # Quick look at data #
 ################################################################################
@@ -128,16 +125,16 @@ data <- data %>%
 data <- data %>%
   mutate(
     n_bathrooms =  ifelse(is.na(n_bathrooms), median(n_bathrooms, na.rm = T), n_bathrooms), #assume at least 1 bath
-    n_beds = ifelse(is.na(n_beds), n_accommodates, n_beds), #assume n_beds=n_accommodates
+    n_beds = ifelse(is.na(n_beds), n_accommodates, n_beds), #assume n_beds=n_accomodates
     f_bathroom=ifelse(is.na(f_bathroom),1, f_bathroom),
     f_minimum_nights=ifelse(is.na(f_minimum_nights),1, f_minimum_nights),
-#    f_number_of_reviews=ifelse(is.na(f_number_of_reviews),1, f_number_of_reviews),
+    f_number_of_reviews=ifelse(is.na(f_number_of_reviews),1, f_number_of_reviews),
     ln_beds=ifelse(is.na(ln_beds),0, ln_beds),
-    )
+  )
 
 
 # 3. drop columns when many missing not imortant
-to_drop <- c("usd_cleaning_fee", "p_host_response_rate")
+to_drop <- c("usd_cleaning_fee", "p_host_response_rate", "d_reviews_per_month")
 data <- data %>%
   select(-one_of(to_drop))
 
@@ -148,19 +145,18 @@ to_filter[to_filter > 0]
 # 4. Replace missing variables re reviews with zero, when no review + add flags
 data <- data %>%
   mutate(
-    flag_days_since=ifelse(is.na(n_days_since),1, 0),
-    n_days_since =  ifelse(is.na(n_days_since), median(n_days_since, na.rm = T), n_days_since),
-    n_bathrooms = ifelse(is.na(n_bathrooms), median(n_bathrooms, na.rm = T), n_bathrooms), 
-    n_beds = ifelse(is.na(n_beds), median(n_beds, na.rm = T), n_beds), 
-    flag_review_scores_rating=ifelse(is.na(n_review_scores_rating),1, 0),
-    n_review_scores_rating =  ifelse(is.na(n_review_scores_rating), median(n_review_scores_rating, na.rm = T), n_review_scores_rating),
-    flag_reviews_per_month=ifelse(is.na(n_reviews_per_month),1, 0),
-    n_reviews_per_month =  ifelse(is.na(n_reviews_per_month), median(n_reviews_per_month, na.rm = T), n_reviews_per_month)
-          )
+    flag_days_since = ifelse(is.na(n_days_since),1, 0),
+    n_days_since    =  ifelse(is.na(n_days_since), median(n_days_since, na.rm = T), n_days_since),
+    flag_review_scores_rating = ifelse(is.na(n_review_scores_rating),1, 0),
+    n_review_scores_rating    = ifelse(is.na(n_review_scores_rating), median(n_review_scores_rating, na.rm = T), n_review_scores_rating),
+    flag_reviews_per_month    = ifelse(is.na(n_reviews_per_month),1, 0),
+    n_reviews_per_month       = ifelse(is.na(n_reviews_per_month), median(n_reviews_per_month, na.rm = T), n_reviews_per_month)
+  )
 
 table(data$flag_days_since)
 
-
+to_filter <- sapply(data, function(x) sum(is.na(x)))
+to_filter[to_filter > 0]
 
 # 5. Add features: existing variables in different functional form
 # Create variables, measuring the time since: squared, cubic, logs
@@ -171,7 +167,6 @@ data <- data %>%
     ln_days_since3 = log(n_days_since+1)^3 ,
     n_days_since2=n_days_since^2,
     n_days_since3=n_days_since^3,
-    n_accommodates2 = n_accommodates^2, 
     ln_review_scores_rating = log(n_review_scores_rating),
     ln_days_since=ifelse(is.na(ln_days_since),0, ln_days_since),
     ln_days_since2=ifelse(is.na(ln_days_since2),0, ln_days_since2),
@@ -358,8 +353,8 @@ ggplot(
 basic_lev  <- c("n_accommodates", "n_beds", "f_property_type", "f_room_type", "n_days_since", "flag_days_since")
 
 # Factorized variables
-basic_add <- c("f_cancellation_policy","f_bed_type")
-reviews <- c("n_review_scores_rating", "flag_review_scores_rating")
+basic_add <- c("f_bathroom","f_cancellation_policy","f_bed_type")
+reviews <- c("f_number_of_reviews","n_review_scores_rating", "flag_review_scores_rating")
 # Higher orders
 poly_lev <- c("n_accommodates2", "n_days_since2", "n_days_since3")
 
@@ -392,9 +387,10 @@ X1  <- c("f_room_type*f_property_type",  "f_room_type*d_familykidfriendly")
 
 # additional interactions of factors and dummies
 X2  <- c("d_airconditioning*f_property_type", "d_cats*f_property_type", "d_dogs*f_property_type")
-X3  <- c(paste0(
-  "(f_property_type + f_room_type + f_cancellation_policy + f_bed_type) * (",
-  paste(amenities, collapse=" + "),")"))
+X3  <- c(
+  paste0(
+    "(f_property_type + f_room_type + f_cancellation_policy + f_bed_type) * (",
+    paste(amenities, collapse=" + "),")"))
 
 # Create models in levels models: 1-8
 modellev1 <- " ~ n_accommodates"
@@ -468,19 +464,27 @@ for (i in (1:8)){
   rmse_test <- c()
   
   # estimate regression on the whole work data
+  print('Here comes OLS')
   model_work_data <- lm(formula,data = data_work)
   BIC <- BIC(model_work_data)
+  print(paste0('BIC: ', BIC))
   nvars <- model_work_data$rank -1
+  print(paste0('nvars: ', nvars))
   r2 <- summary(model_work_data)$r.squared
+  print(paste0('r2: ', r2))
   rmse_train = sqrt(sum(model_work_data$residuals^2)/nrow(data_work))
+  print(paste0('rmse train: ', rmse_train))
   
   # cross-validation
-    cv_i = train(
+  set.seed(20230118)
+  cv_i = train(
     formula, data_work, method = 'lm', 
-    trControl = trainControl(method = 'cv', number = k_folds)
+    trControl = trainControl(method = 'cv', number = k_folds),
+    na.action = "na.omit"
   )
-  
+  print(paste0('CV RMSE: ', cv_i$resample$RMSE))
   rmse_test = sqrt(sum(cv_i$resample$RMSE^2)/k_folds)
+  print(paste0('rmse test: ', rmse_test))
   
   # gather key metrics
   model_names[i] <- model_pretty_name
@@ -512,7 +516,7 @@ ggplot( data = cv_result, aes( x = factor( coefficients ) , group = 1 ) )+
   labs(y='RMSE',x='Number of coefficients',color = "", title = "RMSE: Training & Test")+
   scale_color_manual(values = colors) + 
   scale_y_continuous(
-    expand = expansion(),  limits = c(34, 44), breaks = seq(32, 44, by = 1)) +
+    expand = expansion(),  limits = c(30, 45), breaks = seq(30, 45, by = 1)) +
   theme_bw()+
   theme(legend.position=c(0.5, 0.8))
 
@@ -533,7 +537,7 @@ tune_grid <- expand.grid("alpha" = c(1), "lambda" = seq(0.05, 1, by = 0.05))
 # We use model 7 without the interactions so that it is easy to compare later to post lasso ols
 formula <- formula(paste0("price ~ ", paste(setdiff(vars_model_8, "price"), collapse = " + ")))
 
-set.seed(20230118)
+set.seed(20230125)
 
 lasso_model <- caret::train(
   formula,
@@ -602,6 +606,7 @@ m7 = lm(formula, data = data_work)
 # predict on the holdout set
 m7_pred = predict(m7, newdata = data_holdout)
 m7_rmse = RMSE(m3_pred, data_holdout$price)
+
 
 # lasso
 ml_pred <- predict(lasso_model, newdata = data_holdout)

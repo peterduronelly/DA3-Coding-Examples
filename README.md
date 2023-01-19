@@ -6,7 +6,7 @@ Coding classes for Data Analysis 3 on MSc in Business Analytics on the Central E
 
 Download the books code base and open an R project as given on the book's home page: [How to set up your computer for R](https://gabors-data-analysis.com/howto-r/).
 
-Download the appropriate R files, or fork the repo, clone it, and open the code from your R project's environment. Once your done, you are good to go.
+Download the appropriate R files, or fork the repo, clone it, and open the code from your R project's environment. Once you're done, you are good to go.
 
 ## Contents
 
@@ -35,7 +35,7 @@ Lasso:
 Data manipulation as in class 13<br>
 Basic regression trees<br>
 Plotting trees and regression results as step functions<br>
-Building more complex regression trees with control parameters
-Pruning
-Comparing tree-based and OLS models
-Variable importance: with final only and with competing variables
+Building more complex regression trees with control parameters<br>
+Pruning<br>
+Comparing tree-based and OLS models<br>
+Variable importance: with final only and with competing variables<br>
