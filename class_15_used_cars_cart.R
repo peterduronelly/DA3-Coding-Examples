@@ -54,7 +54,7 @@ data$type <- fct_explicit_na(data$type, na_level = "Missing")
 
 # missing changed to good not missing
 # data$condition <- fct_explicit_na(data$condition, na_level = "Missing")
-table(data$condition       )
+table(data$condition)
 data$condition[is.na(data$condition)] <- "good"
 table(data$condition       )
 
@@ -118,7 +118,7 @@ Hmisc::describe(data$price)
 
 # create test and train samples (70% of observations in train sample)
 smp_size <- floor(0.7 * nrow(data))
-set.seed(20180122)
+set.seed(20230125)
 
 train_ids <- sample(seq_len(nrow(data)), size = smp_size)
 data$train <- 0
@@ -503,6 +503,9 @@ cart4 <- train(
   tuneGrid= expand.grid(cp = 0.01),
   control = rpart.control(minsplit = 20, maxcompete = FALSE),
   na.action = na.pass)
+
+# maxcompete: the number of competitor splits retained in the output. It is useful to know not
+# just which split was chosen, but which variable came in second, third, etc
 
 cart4_var_imp <- varImp(cart4)$importance
 cart4_var_imp_df <-
