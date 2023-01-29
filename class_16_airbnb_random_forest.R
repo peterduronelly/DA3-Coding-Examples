@@ -10,72 +10,37 @@
 ###############################################################################################
 
 
-
-# ------------------------------------------------------------------------------------------------------
-#### SET UP
-# It is advised to start a new session for every case study
 # CLEAR MEMORY
 rm(list=ls())
 
 
-library(rattle)
 library(tidyverse)
 library(caret)
+# Random forest package
 library(ranger)
-library(Hmisc)
-library(knitr)
-library(kableExtra)
-library(xtable)
+library(modelsummary)
+# install.packages("pdp")
+library(pdp)
+# Gradient boosting machine
+library(gbm)
+# Pretty plots
+library(rattle)
+library(tables)
 
 
 
-# set working directory
-# option A: open material as project
-# option B: set working directory for da_case_studies
-#           example: setwd("C:/Users/bekes.gabor/Documents/github/da_case_studies/")
-
-# set data dir, data used
-source("set-data-directory.R")             # data_dir must be first defined 
-# alternative: give full path here, 
-#            example data_dir="C:/Users/bekes.gabor/Dropbox (MTA KRTK)/bekes_kezdi_textbook/da_data_repo"
-
-# load theme and functions
-source("ch00-tech-prep/theme_bg.R")
-source("ch00-tech-prep/da_helper_functions.R")
-
-use_case_dir <- "ch16-airbnb-random-forest/"
-data_in <- use_case_dir
-data_out <- use_case_dir
-output <- paste0(use_case_dir,"output/")
-create_output_if_doesnt_exist(output)
-
-
-#-----------------------------------------------------------------------------------------
 
 #########################################################################################
-#
-# PART I
-# Loading and preparing data ----------------------------------------------
-#
-#########################################################################################
 
-
+# DATA IMPORT, EDA & FEATURES
 
 # Used area
 area <- "london"
-data <- read_csv(paste0(data_in, "airbnb_", area, "_workfile_adj_book.csv")) %>%
+url <- 'https://raw.githubusercontent.com/peterduronelly/DA3-Coding-Examples/main/data/airbnb_london_workfile_adj_book.csv'
+data <- read_csv(url) %>%
   mutate_if(is.character, factor) %>%
   filter(!is.na(price))
 
-
-count_missing_values <- function(data) {
-  num_missing_values <- map_int(data, function(x) sum(is.na(x)))
-  num_missing_values[num_missing_values > 0]
-}
-
-count_missing_values(data)
-
-# Sample definition and preparation ---------------------------------------
 
 # We focus on normal apartments, n<8
 data <- data %>% filter(n_accommodates < 8)
@@ -87,48 +52,58 @@ data <- data %>% mutate(n_accommodates_copy = n_accommodates)
 
 # basic descr stat -------------------------------------------
 skimr::skim(data)
-summary(data$price)
-Hmisc::describe(data$price)
-describe(data$f_room_type)
-describe(data$f_property_type)
-table(data$f_number_of_reviews)
 
-# create train and holdout samples -------------------------------------------
+data %>% 
+  summarise(
+    frequency=n(),
+    min = min(price),
+    P1 = quantile(price, 0.01), 
+    D1 = quantile(price, 0.1), 
+    Q1 = quantile(price, 0.25), 
+    Me = quantile(price, 0.5), 
+    Q3 = quantile(price, 0.75), 
+    D9 = quantile(price, 0.9), 
+    P99 = quantile(price, 0.99),
+    max = max(price))  
+
+Hmisc::describe(data$price)
+
+datasummary( f_room_type * f_property_type  ~ Percent() , data = data )
+datasummary( f_room_type + f_property_type  ~ Percent() , data = data )
+
+# create train and holdout samples 
 # train is where we do it all, incl CV
 
-set.seed(2801)
-
-# First pick a smaller than usual training set so that models run faster and check if works
-# If works, start anew without these two lines
-
-# try <- createDataPartition(data$price, p = 0.2, list = FALSE)
-#data <- data[try, ]
-
-
+set.seed(20230201)
 
 train_indices <- as.integer(createDataPartition(data$price, p = 0.7, list = FALSE))
 data_train <- data[train_indices, ]
 data_holdout <- data[-train_indices, ]
 
+# Check the number of observations
 dim(data_train)
 dim(data_holdout)
 
-# Define models: simpler, extended -----------------------------------------------------------
 
-# Basic Variables inc neighnourhood
+#########################################################################################
+
+# DEFINE MODELS: FROM SIMPLE TO EXTENDED
+
+# Basic Variables incl. neighborhood
 basic_vars <- c(
   "n_accommodates", "n_beds", "n_days_since",
-  "f_property_type","f_room_type", "f_bathroom", "f_cancellation_policy", "f_bed_type",
+  "f_property_type","f_room_type", "n_bathrooms", "f_cancellation_policy", "f_bed_type",
   "f_neighbourhood_cleansed")
 
 # reviews
-reviews <- c("n_number_of_reviews", "flag_n_number_of_reviews" ,"n_review_scores_rating", "flag_review_scores_rating")
+reviews <- c("n_number_of_reviews", "flag_n_number_of_reviews" ,
+             "n_review_scores_rating", "flag_review_scores_rating")
 
-# Dummy variables
+# dummy variables
 amenities <-  grep("^d_.*", names(data), value = TRUE)
 
-#interactions for the LASSO
-# from ch14
+# interactions for the LASSO
+# as seen in Chapter 14 EDA
 X1  <- c("n_accommodates*f_property_type",  "f_room_type*f_property_type",  "f_room_type*d_familykidfriendly",
          "d_airconditioning*f_property_type", "d_cats*f_property_type", "d_dogs*f_property_type")
 # with boroughs
@@ -142,29 +117,36 @@ predictors_E <- c(basic_vars, reviews, amenities, X1,X2)
 
 
 #########################################################################################
-#
-# PART II
-# RANDOM FORESTS -------------------------------------------------------
-#
-#########################################################################################
 
-
+# RANDOM FORESTS 
 
 # do 5-fold CV
+
 train_control <- trainControl(method = "cv",
                               number = 5,
                               verboseIter = FALSE)
 
+# simpler model - random forest
 
 # set tuning
+
 tune_grid <- expand.grid(
-  .mtry = c(5, 7, 9),
+  .mtry = c(8),
   .splitrule = "variance",
-  .min.node.size = c(5, 10)
+  .min.node.size = c(50)
 )
+# note
+#   mtry: number of variables to possibly split at in each node
+#   splitrule: the default splitting rule during random forests tree building consists
+#           of selecting, out of all splits of the (randomly selected) candidate variables, 
+#           the split that minimizes the Gini impurity (in the case of classification) 
+#           and the SSE (in case of regression); 
+#           other options for regressions: "extratrees", "maxstat" or "beta" with default "variance"
+#   see more here: https://bradleyboehmke.github.io/HOML
 
 
-# simpler model for model A (1)
+# run model
+
 set.seed(1234)
 system.time({
 rf_model_1 <- train(
@@ -178,28 +160,59 @@ rf_model_1 <- train(
 })
 rf_model_1
 
-# set tuning for benchamrk model (2)
-tune_grid <- expand.grid(
-  .mtry = c(8, 10, 12),
-  .splitrule = "variance",
-  .min.node.size = c(5, 10, 15)
-)
+# more complicated model with the same tuning parameters
 
 set.seed(1234)
 system.time({
-rf_model_2 <- train(
-  formula(paste0("price ~", paste0(predictors_2, collapse = " + "))),
-  data = data_train,
-  method = "ranger",
-  trControl = train_control,
-  tuneGrid = tune_grid,
-  importance = "impurity"
-)
+  rf_model_2 <- train(
+    formula(paste0("price ~", paste0(predictors_2, collapse = " + "))),
+    data = data_train,
+    method = "ranger",
+    trControl = train_control,
+    tuneGrid = tune_grid,
+    importance = "impurity"
+  )
 })
 
 rf_model_2
 
-# auto tuning first
+
+# evaluate results
+
+results <- resamples(
+  list(
+    model_1  = rf_model_1,
+    model_2  = rf_model_2
+  )
+)
+
+# note: the 'resamples' function provides methods for collection, analyzing and 
+#   visualizing a set of resampling results from a common data set
+
+summary(results)
+
+# model 2 with an expanded grid - will take forever to run
+# tune_grid <- expand.grid(
+#   .mtry = c(8, 10, 12),
+#   .splitrule = "variance",
+#   .min.node.size = c(5, 10, 15)
+# )
+# 
+# set.seed(1234)
+# system.time({
+# rf_model_2 <- train(
+#   formula(paste0("price ~", paste0(predictors_2, collapse = " + "))),
+#   data = data_train,
+#   method = "ranger",
+#   trControl = train_control,
+#   tuneGrid = tune_grid,
+#   importance = "impurity"
+# )
+# })
+# 
+# rf_model_2
+
+# auto tuning - takes even longer
 # set.seed(1234)
 # system.time({
 #   rf_model_2auto <- train(
@@ -211,80 +224,15 @@ rf_model_2
 #   )
 # })
 # rf_model_2auto 
-rf_model_2auto <-rf_model_2
 
-
-
-
-
-# evaluate random forests -------------------------------------------------
-
-results <- resamples(
-  list(
-    model_1  = rf_model_1,
-    model_2  = rf_model_2,
-    model_2b = rf_model_2auto
-    
-  )
-)
-summary(results)
-
-# Save outputs -------------------------------------------------------
-
-# Show Model B rmse shown with all the combinations
-rf_tuning_modelB <- rf_model_2$results %>%
-  dplyr::select(mtry, min.node.size, RMSE) %>%
-  dplyr::rename(nodes = min.node.size) %>%
-  spread(key = mtry, value = RMSE)
-
-kable(x = rf_tuning_modelB, format = "latex", digits = 2, caption = "CV RMSE") %>%
-  add_header_above(c(" ", "vars" = 3)) %>%
-  cat(.,file= paste0(output,"rf_tuning_modelB.tex"))
-
-
-# Turning parameter choice 1
-result_1 <- matrix(c(
-                     rf_model_1$finalModel$mtry,
-                     rf_model_2$finalModel$mtry,
-                     rf_model_2auto$finalModel$mtry,
-                     rf_model_1$finalModel$min.node.size,
-                     rf_model_2$finalModel$min.node.size,
-                     rf_model_2auto$finalModel$min.node.size
-
-                     ),
-                    nrow=3, ncol=2,
-                    dimnames = list(c("Model A", "Model B","Model B auto"),
-                                    c("Min vars","Min nodes"))
-                   )
-kable(x = result_1, format = "latex", digits = 3) %>%
-  cat(.,file= paste0(output,"rf_models_turning_choices.tex"))
-
-# Turning parameter choice 2
-result_2 <- matrix(c(mean(results$values$`model_1~RMSE`),
-                     mean(results$values$`model_2~RMSE`),
-                     mean(results$values$`model_2b~RMSE`)
-),
-nrow=3, ncol=1,
-dimnames = list(c("Model A", "Model B","Model B auto"),
-                c(results$metrics[2]))
-)
-
-
-kable(x = result_2, format = "latex", digits = 3) %>%
-  cat(.,file= paste0(output,"rf_models_rmse.tex"))
 
 
 #########################################################################################
 #
-# PART III
-# MODEL DIAGNOSTICS -------------------------------------------------------
-#
-#########################################################################################
+# DIAGNOSTICS 
 
+# Variable Importance Plots 
 
-#########################################################################################
-# Variable Importance Plots -------------------------------------------------------
-#########################################################################################
 # first need a function to calculate grouped varimp
 group.importance <- function(rf.obj, groups) {
   var.imp <- as.matrix(sapply(groups, function(g) {
@@ -301,8 +249,7 @@ group.importance <- function(rf.obj, groups) {
 # 3) varimp plot , top 10
 # 4) varimp plot  w copy, top 10
 
-
-rf_model_2_var_imp <- importance(rf_model_2$finalModel)/1000
+rf_model_2_var_imp <- ranger::importance(rf_model_2$finalModel)/1000
 rf_model_2_var_imp_df <-
   data.frame(varname = names(rf_model_2_var_imp),imp = rf_model_2_var_imp) %>%
   mutate(varname = gsub("f_neighbourhood_cleansed", "Borough:", varname) ) %>%
@@ -310,55 +257,61 @@ rf_model_2_var_imp_df <-
   arrange(desc(imp)) %>%
   mutate(imp_percentage = imp/sum(imp))
 
+rf_model_2_var_imp_df
 
-##############################
-# 1) full varimp plot, above a cutoff
-##############################
+# quick look
 
-# to have a quick look
 plot(varImp(rf_model_2))
 
+# only above a cutoff
+
 cutoff = 600
-rf_model_2_var_imp_plot <- ggplot(rf_model_2_var_imp_df[rf_model_2_var_imp_df$imp>cutoff,],
-                                  aes(x=reorder(varname, imp), y=imp_percentage)) +
-  geom_point(color=color[1], size=1.5) +
-  geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color=color[1], size=1) +
+
+ggplot(
+    rf_model_2_var_imp_df[rf_model_2_var_imp_df$imp>cutoff,],
+    aes(x=reorder(varname, imp), y=imp_percentage)) +
+  geom_point(color='black', size=1.5) +
+  geom_segment(
+    aes(x=varname,xend=varname,y=0,yend=imp_percentage), 
+    color='black', size=1) +
   ylab("Importance (Percent)") +
   xlab("Variable Name") +
   coord_flip() +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  theme_bg() +
-  theme(axis.text.x = element_text(size=6), axis.text.y = element_text(size=6),
-        axis.title.x = element_text(size=6), axis.title.y = element_text(size=6))
-rf_model_2_var_imp_plot
-#save_fig("rf_varimp1",output, "large")
-save_fig("ch16-figure-1-rf-varimp-base",output, "large")
-
-##############################
-# 2) full varimp plot, top 10 only
-##############################
+  theme_bw() +
+  theme(axis.text.x = element_text(size=8), axis.text.y = element_text(size=8),
+        axis.title.x = element_text(size=8), axis.title.y = element_text(size=8))
 
 
-# have a version with top 10 vars only
-rf_model_2_var_imp_plot_b <- ggplot(rf_model_2_var_imp_df[1:10,], aes(x=reorder(varname, imp), y=imp_percentage)) +
-  geom_point(color=color[1], size=1) +
-  geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color=color[1], size=0.75) +
+
+# full varimp plot, top 10 only
+
+ggplot(
+    rf_model_2_var_imp_df[1:10,], 
+    aes(x=reorder(varname, imp), y=imp_percentage)) +
+  geom_point(color='black', size=3) +
+  geom_segment(
+    aes(x=varname,xend=varname,y=0,yend=imp_percentage), 
+    color='black', size=1) +
   ylab("Importance (Percent)") +
   xlab("Variable Name") +
+  labs(title = 'Simple variable importance plots') + 
   coord_flip() +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-  theme_bg() +
-  theme(axis.text.x = element_text(size=4), axis.text.y = element_text(size=4),
-        axis.title.x = element_text(size=4), axis.title.y = element_text(size=4))
-rf_model_2_var_imp_plot_b
-#save_fig("rf_varimp1_b",output, "small")
-save_fig("ch16-figure-2b-rf-varimp-top10",output, "small")
+  theme_bw()
 
 
-##############################
-# 2) varimp plot grouped
-##############################
-# grouped variable importance - keep binaries created off factors together
+# grouped varimp plot:
+#   keep binaries created off factors together
+
+# UDF
+group.importance <- function(rf.obj, groups) {
+  var.imp <- as.matrix(sapply(groups, function(g) {
+    sum(ranger::importance(rf.obj)[g], na.rm = TRUE)
+  }))
+  colnames(var.imp) <- "MeanDecreaseGini"
+  return(var.imp)
+}
 
 varnames <- rf_model_2$finalModel$xNames
 f_neighbourhood_cleansed_varnames <- grep("f_neighbourhood_cleansed",varnames, value = TRUE)
@@ -378,61 +331,64 @@ groups <- list(f_neighbourhood_cleansed=f_neighbourhood_cleansed_varnames,
                n_beds = "n_beds")
 
 rf_model_2_var_imp_grouped <- group.importance(rf_model_2$finalModel, groups)
-rf_model_2_var_imp_grouped_df <- data.frame(varname = rownames(rf_model_2_var_imp_grouped),
-                                            imp = rf_model_2_var_imp_grouped[,1])  %>%
+rf_model_2_var_imp_grouped_df <- data.frame(
+  varname = rownames(rf_model_2_var_imp_grouped),
+  imp = rf_model_2_var_imp_grouped[,1])  %>%
   mutate(imp_percentage = imp/sum(imp))
 
-rf_model_2_var_imp_grouped_plot <-
-  ggplot(rf_model_2_var_imp_grouped_df, aes(x=reorder(varname, imp), y=imp_percentage)) +
-  geom_point(color=color[1], size=1) +
-  geom_segment(aes(x=varname,xend=varname,y=0,yend=imp_percentage), color=color[1], size=0.7) +
-  ylab("Importance (Percent)") +   xlab("Variable Name") +
+ggplot(
+    rf_model_2_var_imp_grouped_df, 
+    aes(x=reorder(varname, imp), y=imp_percentage)) +
+  geom_point(color='black', size=3) +
+  geom_segment(
+    aes(x=varname,xend=varname,y=0,yend=imp_percentage), 
+    color='black', size=1) +
+  ylab("Importance (Percent)") +   
+  xlab("Variable Name") +
+  labs(title = 'Grouped variable importance plots') + 
   coord_flip() +
-  # expand=c(0,0),
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
-theme_bg() +
-  theme(axis.text.x = element_text(size=4), axis.text.y = element_text(size=4),
-        axis.title.x = element_text(size=4), axis.title.y = element_text(size=4))
-rf_model_2_var_imp_grouped_plot
-#save_fig("rf_varimp_grouped1",output, "small")
-save_fig("ch16-figure-2a-rf-varimp-group",output, "small")
+  theme_bw()
 
 
-
-#########################################################################################
-# Partial Dependence Plots -------------------------------------------------------
+# PDP: partial dependence plots 
 #########################################################################################
 
-pdp_n_acc <- pdp::partial(rf_model_2, pred.var = "n_accommodates", pred.grid = distinct_(data_holdout, "n_accommodates"), train = data_train)
-pdp_n_acc_plot <- pdp_n_acc %>%
+# 1) Number of accommodates
+pdp_n_acc <- pdp::partial(rf_model_2, 
+                          pred.var = "n_accommodates", 
+                          pred.grid = distinct_(data_holdout, "n_accommodates"), 
+                          train = data_train)
+
+pdp_n_acc %>%
   autoplot( ) +
-  geom_point(color=color[1], size=2) +
-  geom_line(color=color[1], size=1) +
+  geom_point(color='black', size=2) +
+  geom_line(color='black', size=1) +
   ylab("Predicted price") +
   xlab("Accommodates (persons)") +
+  labs(title = 'Partial dependence plot for # of accomodates') + 
   scale_x_continuous(limit=c(1,7), breaks=seq(1,7,1))+
-theme_bg()
-pdp_n_acc_plot
-#save_fig("rf_pdp_n_accom", output, "small")
-save_fig("ch16-figure-3a-rf-pdp-n-accom", output, "small")
+  theme_bw()
 
-describe(data_holdout_w_prediction$n_accommodates)
+# note: autoplot() is a generic function to visualize various data object. It tries to 
+#   give better default graphics and customized choices for each data type, quick and 
+#   convenient to explore your genomic data compare to low level ggplot method. It is much 
+#   simpler and easy to produce fairly complicate graphics, though you may lose some 
+#   flexibility for each layer.
 
+# 2) room type
+pdp_n_roomtype <- pdp::partial(rf_model_2, pred.var = "f_room_type", 
+                               pred.grid = distinct_(data_holdout, "f_room_type"), 
+                               train = data_train)
 
-pdp_n_roomtype <- pdp::partial(rf_model_2, pred.var = "f_room_type", pred.grid = distinct_(data_holdout, "f_room_type"), train = data_train)
-pdp_n_roomtype_plot <- pdp_n_roomtype %>%
+pdp_n_roomtype %>%
   autoplot( ) +
-  geom_point(color=color[1], size=2) +
+  geom_point(color='black', size=4) +
   ylab("Predicted price") +
   xlab("Room type") +
+  labs(title = 'PDP for room type') + 
   scale_y_continuous(limits=c(60,120), breaks=seq(60,120, by=10)) +
-  theme_bg()
-pdp_n_roomtype_plot
-#save_fig("rf_pdp_roomtype", output, "small")
-save_fig("ch16-figure-3b-rf-pdp-roomtype", output, "small")
-
-# Subsample performance: RMSE / mean(y) ---------------------------------------
-# NOTE  we do this on the holdout set.
+  theme_bw()
 
 # ---- cheaper or more expensive flats - not used in book
 data_holdout_w_prediction <- data_holdout %>%
