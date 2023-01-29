@@ -352,7 +352,6 @@ ggplot(
 
 
 # PDP: partial dependence plots 
-#########################################################################################
 
 # 1) Number of accommodates
 pdp_n_acc <- pdp::partial(rf_model_2, 
@@ -390,13 +389,15 @@ pdp_n_roomtype %>%
   scale_y_continuous(limits=c(60,120), breaks=seq(60,120, by=10)) +
   theme_bw()
 
-# ---- cheaper or more expensive flats - not used in book
+
+# Out-of-sample performance: RMSE # mean(price) on the holdout set
+
+# cheaper or more expensive flats - not used in book
 data_holdout_w_prediction <- data_holdout %>%
   mutate(predicted_price = predict(rf_model_2, newdata = data_holdout))
 
 
-
-######### create nice summary table of heterogeneity
+# summary table of heterogeneity
 a <- data_holdout_w_prediction %>%
   mutate(is_low_size = ifelse(n_accommodates <= 3, "small apt", "large apt")) %>%
   group_by(is_low_size) %>%
@@ -408,7 +409,8 @@ a <- data_holdout_w_prediction %>%
 
 
 b <- data_holdout_w_prediction %>%
-  filter(f_neighbourhood_cleansed %in% c("Westminster", "Camden", "Kensington and Chelsea", "Tower Hamlets", "Hackney", "Newham")) %>%
+  filter(f_neighbourhood_cleansed %in% c(
+    "Westminster", "Camden", "Kensington and Chelsea", "Tower Hamlets", "Hackney", "Newham")) %>%
   group_by(f_neighbourhood_cleansed) %>%
   dplyr::summarise(
     rmse = RMSE(predicted_price, price),
@@ -425,7 +427,6 @@ c <- data_holdout_w_prediction %>%
     rmse_norm = rmse / mean_price
   )
 
-
 d <- data_holdout_w_prediction %>%
   dplyr::summarise(
     rmse = RMSE(predicted_price, price),
@@ -433,7 +434,7 @@ d <- data_holdout_w_prediction %>%
     rmse_norm = RMSE(predicted_price, price) / mean(price)
   )
 
-# Save output
+
 colnames(a) <- c("", "RMSE", "Mean price", "RMSE/price")
 colnames(b) <- c("", "RMSE", "Mean price", "RMSE/price")
 colnames(c) <- c("", "RMSE", "Mean price", "RMSE/price")
@@ -448,23 +449,11 @@ result_3 <- rbind(line2, a, line1, c, line3, b, d) %>%
   transform(RMSE = as.numeric(RMSE), `Mean price` = as.numeric(`Mean price`),
             `RMSE/price` = as.numeric(`RMSE/price`))
 
-options(knitr.kable.NA = '')
-kable(x = result_3, format = "latex", booktabs=TRUE, linesep = "",digits = c(0,2,1,2), col.names = c("","RMSE","Mean price","RMSE/price")) %>%
-  cat(.,file= paste0(output, "performance_across_subsamples.tex"))
-options(knitr.kable.NA = NULL)
-
-##########################################
-
-
+result_3
 
 #########################################################################################
 #
-# PART IV
-# HORSERACE: compare with other models -----------------------------------------------
-#
-#########################################################################################
-
-
+# COMPETING MODELS
 
 # OLS with dummies for area
 # using model B
