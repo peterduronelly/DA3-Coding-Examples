@@ -598,16 +598,22 @@ result_4 <- imap(
   unlist() %>% 
   as.data.frame() %>%
   rename("CV RMSE" = ".")
-
+# note: imap(): apply a function to each element of a vector, and its index
+# for instance: mean(results$values[["OLS~RMSE"]])
 
 # model evaluation based on holdout set RMSE
 
 result_5 <- map(
   final_models, 
-  ~{RMSE(predict(.x, newdata = data_holdout), data_holdout[["price"]])}
+  ~{RMSE(
+      predict(.x, newdata = data_holdout), 
+      data_holdout[["price"]]
+      )}
   ) %>% 
   unlist() %>% 
   as.data.frame() %>%
   rename("Holdout RMSE" = ".")
+# note: map(): apply a function to each element of a vector
 
 result_5
+
