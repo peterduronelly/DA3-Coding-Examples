@@ -1,3 +1,11 @@
+# Chapter 16
+# A simplified demo of random forest and gradient boosting machines
+# with grid search using a toy data set.
+# 
+# License: Free to share, modify and use for educational purposes. Not to be used for business purposes.
+#
+###############################################################################################
+
 
 rm(list=ls())
 
@@ -11,16 +19,22 @@ library(tables)
 library(gbm)
 library(ISLR)
 
+
+
+# IMPORT & PARTITION DATA 
+
 data <- as.data.frame(Hitters)
 
 data <- data %>% filter(!is.na(Salary))
-
 
 set.seed(20230201)
 
 train_indices <- as.integer(createDataPartition(data$Salary, p = 0.7, list = FALSE))
 data_train <- data[train_indices, ]
 data_holdout <- data[-train_indices, ]
+
+
+# RANDOM FOREST
 
 tune_grid <- expand.grid(
     .mtry = c(3, 4, 5),
@@ -33,6 +47,8 @@ train_control <- trainControl(method = "cv",
                               verboseIter = FALSE)
 
 set.seed(20230201)
+
+# we are running an rf model on Salary with all other variables as independent
 rf_model <- train(formula(Salary ~ .),
               data = data_train,
               method = "ranger",
@@ -44,8 +60,10 @@ rf_model <- train(formula(Salary ~ .),
 rf_model$results
 rf_model$bestTune
 
+# plot varimp
 plot(varImp(rf_model))
 
+# partial dependence: Salary vs CHits
 pdp_rf_model <- pdp::partial(rf_model, 
                           pred.var = "CHits", 
                           pred.grid = distinct_(data_holdout, "CHits"), 
@@ -60,6 +78,8 @@ pdp_rf_model %>%
   scale_x_continuous(limit=c(0,2750), breaks=seq(0,2750,500))+
   theme_bw()
 
+
+# GBM
 
 gbm_grid <-  expand.grid(interaction.depth = c(1,3,5), 
                          n.trees = c(100, 300, 500), 
@@ -78,6 +98,9 @@ system.time({
 
 gbm_model$finalModel
 gbm_model$bestTune
+
+
+# COMPARE DIGNOSTICS
 
 final_models <-
   list("Random forest" = rf_model,
@@ -106,10 +129,13 @@ df_holdout_RMSE <- map(
   as.data.frame() %>%
   rename("Holdout RMSE" = ".")
 
+
+# COMPARE ACTUAL VS PREDICTED ON THE HOLDOUT DATA
+
 data_holdout$gbm_salary <- predict(gbm_model, data_holdout)
 data_holdout$rf_salary <- predict(rf_model, data_holdout)
 
-colors <- c('GBM'='#990033', 'RF'= 'blue', '45' = 'black')
+
 colors <- c('GBM'='#990033', 'RF'= 'blue')
 
 ggplot( 
