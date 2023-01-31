@@ -63,19 +63,19 @@ rf_model$bestTune
 # plot varimp
 plot(varImp(rf_model))
 
-# partial dependence: Salary vs CHits
+# partial dependence: Salary vs CRBI
 pdp_rf_model <- pdp::partial(rf_model, 
-                          pred.var = "CHits", 
-                          pred.grid = distinct_(data_holdout, "CHits"), 
+                          pred.var = "CRBI", 
+                          pred.grid = distinct_(data_holdout, "CRBI"), 
                           train = data_train)
 pdp_rf_model %>%
   autoplot( ) +
   geom_point(color='black', size=2) +
   geom_line(color='black', size=1) +
   ylab("Predicted Salary") +
-  xlab("CHits") +
+  xlab("CRBI") +
   labs(title = 'Partial dependence plot for hits') + 
-  scale_x_continuous(limit=c(0,2750), breaks=seq(0,2750,500))+
+  scale_x_continuous(limit=c(0,2000), breaks=seq(0,2000,500))+
   theme_bw()
 
 

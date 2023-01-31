@@ -448,6 +448,8 @@ line3 <- c("Borough", "", "", "")
 result_3 <- rbind(line2, a, line1, c, line3, b, d) %>%
   transform(RMSE = as.numeric(RMSE), `Mean price` = as.numeric(`Mean price`),
             `RMSE/price` = as.numeric(`RMSE/price`))
+colnames(result_3) <- c("", "RMSE", "Mean price", "RMSE/price")
+result_3[is.na(result_3)] <- ""
 
 result_3
 
@@ -593,7 +595,7 @@ results <- resamples(final_models) %>% summary()
 
 result_4 <- imap(
   final_models, 
-  ~{mean(results$values[[paste0(.y,"~RMSE")]])}
+  ~{sqrt(mean(results$values[[paste0(.y,"~RMSE")]]^2))}
   ) %>% 
   unlist() %>% 
   as.data.frame() %>%
