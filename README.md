@@ -31,7 +31,7 @@ Lasso:
     Diagnostics on the holdout set.<br>
     Plotting prediction results.
 
-3. **class 13, used cars**<br>
+3. **class 15, used cars**<br>
 Data manipulation as in class 13<br>
 Basic regression trees<br>
 Plotting trees and regression results as step functions<br>
@@ -39,3 +39,13 @@ Building more complex regression trees with control parameters<br>
 Pruning<br>
 Comparing tree-based and OLS models<br>
 Variable importance: with final only and with competing variables<br>
+
+4. **class 16, used cars, hitters**<br>
+Setting up grid for grid search in `caret::train`<br>
+Running random forest model using the `ranger` package in `caret`<br>
+Getting and plotting individual and grouped variable importances<br>
+Partial dependence plots for rf models
+Predictions and RMSE for subsets of data<br>
+Comparing OLS, LASSO, CART, and random forest<br>
+Gradient Boosting Machines: tuning and model run<br>
+Hitters: parameter grid search on a smaller and easier-to-handle dataset<br>
