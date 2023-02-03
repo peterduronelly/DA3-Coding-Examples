@@ -40,7 +40,7 @@ Pruning<br>
 Comparing tree-based and OLS models<br>
 Variable importance: with final only and with competing variables<br>
 
-4. **class 16, used cars, hitters**<br>
+4. **class 16, airbnb, hitters**<br>
 Setting up grid for grid search in `caret::train`<br>
 Running random forest model using the `ranger` package in `caret`<br>
 Getting and plotting individual and grouped variable importances<br>
@@ -49,3 +49,4 @@ Predictions and RMSE for subsets of data<br>
 Comparing OLS, LASSO, CART, and random forest<br>
 Gradient Boosting Machines: tuning and model run<br>
 Hitters: parameter grid search on a smaller and easier-to-handle dataset<br>
+The airbnb analysis is implemented both in R and in Python using a Jupyter notebook<br>
