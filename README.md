@@ -4,9 +4,9 @@ Coding classes for Data Analysis 3 on MSc in Business Analytics on the Central E
 
 ## How to run the codes?
 
-Download the books code base and open an R project as given on the book's home page: [How to set up your computer for R](https://gabors-data-analysis.com/howto-r/).
+Open an R project as given on the book's home page: [How to set up your computer for R](https://gabors-data-analysis.com/howto-r/).
 
-Download the appropriate R files, or fork the repo, clone it, and open the code from your R project's environment. Once you're done, you are good to go.
+Download the appropriate files, or fork this repo, clone it, and open the code from your R project's environment. Once you're done, you are good to go.
 
 ## Contents
 
