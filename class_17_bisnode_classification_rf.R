@@ -10,86 +10,127 @@
 ###############################################################################################
 
 
-
-# ------------------------------------------------------------------------------------------------------
-#### SET UP
-# It is advised to start a new session for every case study
-# CLEAR MEMORY
+# CLEAR MEMORY & LIBRARIES
 rm(list=ls())
 
-# Import libraries
-library(haven)
+
 library(glmnet)
-library(purrr)
 library(margins)
 library(skimr)
-library(kableExtra)
-library(Hmisc)
 library(cowplot)
 library(gmodels) 
-library(lspline)
-library(sandwich)
 library(modelsummary)
-
+library(tidyverse)
+library(viridis)
 library(rattle)
 library(caret)
 library(pROC)
 library(ranger)
 library(rpart)
-library(partykit)
 library(rpart.plot)
+library(scales)
 
 
-# set working directory
-# option A: open material as project
-# option B: set working directory for da_case_studies
-#           example: setwd("C:/Users/bekes.gabor/Documents/github/da_case_studies/")
+#########################################################################################
 
-# set data dir, data used
-source("set-data-directory.R")             # data_dir must be first defined 
-# alternative: give full path here, 
-#            example data_dir="C:/Users/bekes.gabor/Dropbox (MTA KRTK)/bekes_kezdi_textbook/da_data_repo"
+# DATA IMPORT, EDA & FEATURES
 
-# load theme and functions
-source("ch00-tech-prep/theme_bg.R")
-source("ch00-tech-prep/da_helper_functions.R")
-options(digits = 3) 
+data <- read_csv('https://raw.githubusercontent.com/peterduronelly/DA3-Coding-Examples/main/data/bisnode_firms_clean.csv')
 
-data_in <- paste(data_dir,"bisnode-firms","clean/", sep = "/")
-use_case_dir <- "ch17-predicting-firm-exit/"
+# summary
+skimr::skim(data)
 
-data_out <- use_case_dir
-output <- paste0(use_case_dir,"output/")
-create_output_if_doesnt_exist(output)
+# visual representation of the default ratio
+
+ggplot( 
+  data = data , 
+  aes( x = default ) ) +
+  geom_histogram( 
+    aes( y = ..count.. / sum( count ) ) , 
+    size = 0.1 , fill = 'black',bins = 3)+
+  labs(y='Probabilities',x='0: Exists, 1: Defaults')+
+  scale_y_continuous(
+    labels = scales::percent_format(accuracy = 0.1), 
+    limits = c(0,1)
+  ) + 
+  theme_bw()
+
+# sales vs defaults
+
+colors <- c('original datapoints'= 'black', 'linear model'='#990033', 'loess'= 'blue')
+
+ggplot(
+  data = data, 
+  aes(x=sales_mil_log)) +
+  geom_point(aes( y=as.numeric(default), color="original datapoints"),
+    size=1,  shape=20, stroke=2, fill="black" ) +
+  geom_smooth(aes(y=as.numeric(default), color= 'linear model'), 
+    method = "lm", formula = y ~ poly(x,2), se = F, size=1.5)+
+  geom_smooth(aes(y=as.numeric(default), color= 'loess'),
+    method="loess", se=F, size=1.5, span=1) +
+  labs(
+    x = "sales_mil_log",y = "default", 
+    color = '', title = 'Sales vs default probabilities') +
+  scale_color_manual(values = colors) + 
+  theme_bw()
+
+# Finding a relationship between sales growth and default using original
+#   and winsorized/clipped sales values
+
+# original sales data
+
+ggplot(
+  data = data, 
+  aes(x=d1_sales_mil_log, y=as.numeric(default))) +
+  geom_point(
+    size=0.1,  shape=20, stroke=2, fill='blue', color='black') +
+  geom_smooth(
+    method="loess", se=F, colour='#990033', size=1.5, span=0.9) +
+  labs(
+    x = "Growth rate (Diff of ln sales)",y = "default", 
+    title = 'Annual growth in sales vs defaults') +
+  theme_bw() +
+  scale_x_continuous(limits = c(-6,10), breaks = seq(-5,10, 5))
+
+# winsorized/clipped sales data
+
+ggplot(
+  data = data, 
+  aes(x=d1_sales_mil_log_mod, y=as.numeric(default))) +
+  geom_point(
+    size=0.1,  shape=20, stroke=2, fill='blue', color='black') +
+  geom_smooth(
+    method="loess", se=F, colour='#990033', size=1.5, span=0.9) +
+  labs(
+    x = "Growth rate (Diff of ln sales)",y = "default", 
+    title = 'Annual growth in sales vs defaults - winsorized (clipped) data') +
+  theme_bw() +
+  scale_x_continuous(limits = c(-6,10), breaks = seq(-5,10, 5))
+
+# Where did clip the data?
+
+ggplot(data = data, aes(x=d1_sales_mil_log, y=d1_sales_mil_log_mod)) +
+  geom_point(size=0.1,  shape=20, stroke=2, fill='blue', color='blue') +
+  labs(x = "Growth rate (Diff of ln sales) (original)",y = "Growth rate (Diff of ln sales) (winsorized)") +
+  theme_bw() +
+  scale_x_continuous(limits = c(-5,5), breaks = seq(-5,5, 1)) +
+  scale_y_continuous(limits = c(-3,3), breaks = seq(-3,3, 1))
 
 
-#-----------------------------------------------------------------------------------------
+# MODELLING
 
-# THIS IS THE SECOND PART OF THE ch17 CODE
-# USES INTERMEDIATE OUTPUT by ch17-firm-exit-data-prep.R
+# define variable sets 
+# note: we use the factor variable 'ind2_cat'
 
-
-# Loading and preparing data ----------------------------------------------
-
-# Use R format so it keeps factor definitions
-# data <- read_csv(paste0(data_out,"bisnode_firms_clean.csv"))
-data <- read_rds(paste(data_out,"bisnode_firms_clean.rds", sep = "/"))
-
-#summary
-datasummary_skim(data, type='numeric', histogram = TRUE)
-# datasummary_skim(data, type="categorical")
-
-
-# Define variable sets ----------------------------------------------
-# (making sure we use ind2_cat, which is a factor)
-
-rawvars <-  c("curr_assets", "curr_liab", "extra_exp", "extra_inc", "extra_profit_loss", "fixed_assets",
-              "inc_bef_tax", "intang_assets", "inventories", "liq_assets", "material_exp", "personnel_exp",
-              "profit_loss_year", "sales", "share_eq", "subscribed_cap")
+rawvars <-  c("curr_assets", "curr_liab", "extra_exp", "extra_inc", 
+              "extra_profit_loss", "fixed_assets","inc_bef_tax", 
+              "intang_assets", "inventories", "liq_assets", "material_exp", 
+              "personnel_exp","profit_loss_year", "sales", "share_eq", "subscribed_cap")
 qualityvars <- c("balsheet_flag", "balsheet_length", "balsheet_notfullyear")
-engvar <- c("total_assets_bs", "fixed_assets_bs", "liq_assets_bs", "curr_assets_bs",
-            "share_eq_bs", "subscribed_cap_bs", "intang_assets_bs", "extra_exp_pl",
-            "extra_inc_pl", "extra_profit_loss_pl", "inc_bef_tax_pl", "inventories_pl",
+engvar <- c("total_assets_bs", "fixed_assets_bs", "liq_assets_bs", 
+            "curr_assets_bs","share_eq_bs", "subscribed_cap_bs", 
+            "intang_assets_bs", "extra_exp_pl","extra_inc_pl", 
+            "extra_profit_loss_pl", "inc_bef_tax_pl", "inventories_pl",
             "material_exp_pl", "profit_loss_year_pl", "personnel_exp_pl")
 engvar2 <- c("extra_profit_loss_pl_quad", "inc_bef_tax_pl_quad",
              "profit_loss_year_pl_quad", "share_eq_bs_quad")
@@ -104,45 +145,53 @@ hr <- c("female", "ceo_age", "flag_high_ceo_age", "flag_low_ceo_age",
         "flag_miss_labor_avg", "foreign_management")
 firm <- c("age", "age2", "new", "ind2_cat", "m_region_loc", "urban_m")
 
-# interactions for logit, LASSO
+# interactions for logit & LASSO
+
 interactions1 <- c("ind2_cat*age", "ind2_cat*age2",
                    "ind2_cat*d1_sales_mil_log_mod", "ind2_cat*sales_mil_log",
                    "ind2_cat*ceo_age", "ind2_cat*foreign_management",
-                   "ind2_cat*female",   "ind2_cat*urban_m", "ind2_cat*labor_avg_mod")
+                   "ind2_cat*female",   "ind2_cat*urban_m", 
+                   "ind2_cat*labor_avg_mod")
 interactions2 <- c("sales_mil_log*age", "sales_mil_log*female",
-                   "sales_mil_log*profit_loss_year_pl", "sales_mil_log*foreign_management")
+                   "sales_mil_log*profit_loss_year_pl", 
+                   "sales_mil_log*foreign_management")
 
-
-X1 <- c("sales_mil_log", "sales_mil_log_sq", "d1_sales_mil_log_mod", "profit_loss_year_pl", "ind2_cat")
-X2 <- c("sales_mil_log", "sales_mil_log_sq", "d1_sales_mil_log_mod", "profit_loss_year_pl", "fixed_assets_bs","share_eq_bs","curr_liab_bs ",   "curr_liab_bs_flag_high ", "curr_liab_bs_flag_error",  "age","foreign_management" , "ind2_cat")
-X3 <- c("sales_mil_log", "sales_mil_log_sq", firm, engvar,                   d1)
-X4 <- c("sales_mil_log", "sales_mil_log_sq", firm, engvar, engvar2, engvar3, d1, hr, qualityvars)
-X5 <- c("sales_mil_log", "sales_mil_log_sq", firm, engvar, engvar2, engvar3, d1, hr, qualityvars, interactions1, interactions2)
+X1 <- c("sales_mil_log", "sales_mil_log_sq", "d1_sales_mil_log_mod", 
+        "profit_loss_year_pl", "ind2_cat")
+X2 <- c("sales_mil_log", "sales_mil_log_sq", "d1_sales_mil_log_mod", 
+        "profit_loss_year_pl", "fixed_assets_bs","share_eq_bs",
+        "curr_liab_bs ",   "curr_liab_bs_flag_high ", 
+        "curr_liab_bs_flag_error",  "age","foreign_management" , "ind2_cat")
+X3 <- c("sales_mil_log", "sales_mil_log_sq", firm, engvar,d1)
+X4 <- c("sales_mil_log", "sales_mil_log_sq", firm, engvar, engvar2, 
+        engvar3, d1, hr, qualityvars)
+X5 <- c("sales_mil_log", "sales_mil_log_sq", firm, engvar, engvar2, 
+        engvar3, d1, hr, qualityvars, interactions1, interactions2)
 
 # for LASSO
-logitvars <- c("sales_mil_log", "sales_mil_log_sq", engvar, engvar2, engvar3, d1, hr, firm, qualityvars, interactions1, interactions2)
+logitvars <- c("sales_mil_log", "sales_mil_log_sq", engvar, engvar2, 
+               engvar3, d1, hr, firm, qualityvars, interactions1, interactions2)
 
 # for RF (no interactions, no modified features)
 rfvars  <-  c("sales_mil", "d1_sales_mil_log", rawvars, hr, firm, qualityvars)
 
 
-# Check simplest model X1
-ols_modelx1 <- lm(formula(paste0("default ~", paste0(X1, collapse = " + "))),
+# simplest model X1
+# linear probability
+
+ols_modelx2 <- lm(formula(paste0("default ~", paste0(X2, collapse = " + "))),
                 data = data)
-summary(ols_modelx1)
+summary(ols_modelx2)
 
-glm_modelx1 <- glm(formula(paste0("default ~", paste0(X1, collapse = " + "))),
-                   data = data, family = "binomial")
-summary(glm_modelx1)
+# logit
 
-
-# Check model X2
 glm_modelx2 <- glm(formula(paste0("default ~", paste0(X2, collapse = " + "))),
-                 data = data, family = "binomial")
+                   data = data, family = "binomial")
 summary(glm_modelx2)
 
-#calculate average marginal effects (dy/dx) for logit
-mx2 <- margins(glm_modelx2)
+# logit marginal effects
+
+mx2 <- margins(glm_modelx2, vce = "none")
 
 sum_table <- summary(glm_modelx2) %>%
   coef() %>%
@@ -151,38 +200,8 @@ sum_table <- summary(glm_modelx2) %>%
   mutate(factor = row.names(.)) %>%
   merge(summary(mx2)[,c("factor","AME")])
 
-kable(x = sum_table, format = "latex", digits = 3,
-      col.names = c("Variable", "Coefficient", "dx/dy"),
-      caption = "Average Marginal Effects (dy/dx) for Logit Model") %>%
-  cat(.,file= paste0(output,"AME_logit_X2.tex"))
+sum_table
 
-
-# baseline model is X4 (all vars, but no interactions) -------------------------------------------------------
-
-ols_model <- lm(formula(paste0("default ~", paste0(X4, collapse = " + "))),
-                data = data)
-summary(ols_model)
-
-glm_model <- glm(formula(paste0("default ~", paste0(X4, collapse = " + "))),
-                 data = data, family = "binomial")
-summary(glm_model)
-
-#calculate average marginal effects (dy/dx) for logit
-# vce="none" makes it run much faster, here we do not need variances
-
-m <- margins(glm_model, vce = "none")
-
-sum_table2 <- summary(glm_model) %>%
-  coef() %>%
-  as.data.frame() %>%
-  select(Estimate, `Std. Error`) %>%
-  mutate(factor = row.names(.)) %>%
-  merge(summary(m)[,c("factor","AME")])
-
-kable(x = sum_table2, format = "latex", digits = 3,
-      col.names = c("Variable", "Coefficient", "SE", "dx/dy"),
-      caption = "Average Marginal Effects (dy/dx) for Logit Model") %>%
-  cat(.,file= paste0(output,"AME_logit_X4.tex"))
 
 
 # separate datasets -------------------------------------------------------
