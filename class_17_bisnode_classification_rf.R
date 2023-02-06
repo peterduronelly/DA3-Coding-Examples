@@ -324,26 +324,98 @@ CV_RMSE_folds[["LASSO"]] <- logit_lasso_model$resample[,c("Resample", "RMSE")]
 
 # STEP 2 CLASSIFICATION
 # no loss function
+# calibration plot, confusion matrix, ROC, AUC
 
-# draw ROC Curve and calculate AUC for each folds 
-CV_AUC_folds <- list()
+best_logit_no_loss <- logit_models[["X4"]]
 
-for (model_name in names(logit_models)) {
+logit_predicted_probabilities_holdout <- predict(
+  best_logit_no_loss, newdata = data_holdout, type = "prob")
+data_holdout[,"best_logit_no_loss_pred"] <- logit_predicted_probabilities_holdout[,"default"]
+RMSE(data_holdout[, "best_logit_no_loss_pred", drop=TRUE], data_holdout$default)
 
-  auc <- list()
-  model <- logit_models[[model_name]]
-  for (fold in c("Fold1", "Fold2", "Fold3", "Fold4", "Fold5")) {
-    cv_fold <-
-      model$pred %>%
-      filter(Resample == fold)
+# 2.1 calibration plot: how did we do in predicting the probabilities?
 
-    roc_obj <- roc(cv_fold$obs, cv_fold$default)
-    auc[[fold]] <- as.numeric(roc_obj$auc)
-  }
+create_calibration_plot(
+  data_holdout, 
+  prob_var = "best_logit_no_loss_pred", 
+  actual_var = "default",
+  n_bins = 10)
 
-  CV_AUC_folds[[model_name]] <- data.frame("Resample" = names(auc),
-                                              "AUC" = unlist(auc))
+# 2.2 confusion matrix
+# default threshold: 0.5
+
+logit_class_prediction <- predict(best_logit_no_loss, newdata = data_holdout)
+summary(logit_class_prediction)
+
+# positive = "yes": explicitly specify the positive case
+cm_object_1a <- confusionMatrix(logit_class_prediction, as.factor(data_holdout$default_f), positive = "default")
+
+cm_object_1a
+cm_1a <- cm_object_1a$table
+
+
+holdout_prediction <-
+  ifelse(
+    data_holdout$best_logit_no_loss_pred < 0.5, "no_default", "default"
+    ) %>%
+  factor(levels = c("no_default", "default"))
+
+cm_object_1b <- confusionMatrix(holdout_prediction,as.factor(data_holdout$default_f))
+cm_1b <- cm_object_1b$table
+
+
+# a sensible choice for threshold is the mean of predicted probabilities
+
+mean_predicted_default_prob <- mean(data_holdout$best_logit_no_loss_pred)
+mean_predicted_default_prob
+holdout_prediction <-
+  ifelse(data_holdout$best_logit_no_loss_pred < mean_predicted_default_prob, "no_default", "default") %>%
+  factor(levels = c("no_default", "default"))
+cm_object_2 <- confusionMatrix(holdout_prediction,as.factor(data_holdout$default_f))
+cm2 <- cm_object_2$table
+cm2
+
+
+# 2.3 plot ROC curve
+
+thresholds <- seq(0.05, 0.75, by = 0.05)
+
+cm <- list()
+true_positive_rates <- c()
+false_positive_rates <- c()
+for (thr in thresholds) {
+  # get holdout prediction
+  holdout_prediction <- ifelse(data_holdout[,"best_logit_no_loss_pred"] < thr, "no_default", "default") %>%
+    factor(levels = c("no_default", "default"))
+  # create confusion matrix
+  cm_thr <- confusionMatrix(holdout_prediction,as.factor(data_holdout$default_f))$table
+  cm[[as.character(thr)]] <- cm_thr
+  # Categorize to true positive/false positive
+  true_positive_rates <- c(true_positive_rates, cm_thr["default", "default"] /
+                             (cm_thr["default", "default"] + cm_thr["no_default", "default"]))
+  false_positive_rates <- c(false_positive_rates, cm_thr["default", "no_default"] /
+                              (cm_thr["default", "no_default"] + cm_thr["no_default", "no_default"]))
 }
+
+tpr_fpr_for_thresholds <- tibble(
+  "threshold" = thresholds,
+  "true_positive_rate"  = true_positive_rates,
+  "false_positive_rate" = false_positive_rates
+)
+
+ggplot(
+  data = tpr_fpr_for_thresholds,
+  aes(x = false_positive_rate, y = true_positive_rate)) +
+  labs(x = "False positive rate (1 - Specificity)", y = "True positive rate (Sensitivity)") +
+  geom_point(size=2, alpha=0.8) +
+  scale_x_continuous(expand = c(0.01,0.01), limit=c(0,1), breaks = seq(0,1,0.1)) +
+  scale_y_continuous(expand = c(0.01,0.01), limit=c(0,1), breaks = seq(0,1,0.1)) +
+  theme_bw() +
+  theme(legend.position ="right") +
+  theme(legend.title = element_text(size = 4), 
+        legend.text = element_text(size = 4),
+        legend.key.size = unit(.4, "cm")) 
+
 
 # For each model: average RMSE and average AUC for models ----------------------------------
 
@@ -354,6 +426,8 @@ for (model_name in names(logit_models)) {
   CV_RMSE[[model_name]] <- mean(CV_RMSE_folds[[model_name]]$RMSE)
   CV_AUC[[model_name]] <- mean(CV_AUC_folds[[model_name]]$AUC)
 }
+
+
 
 # We have 6 models, (5 logit and the logit lasso). For each we have a 5-CV RMSE and AUC.
 # We pick our preferred model based on that. -----------------------------------------------
