@@ -9,7 +9,6 @@
 #
 ###############################################################################################
 
-
 # CLEAR MEMORY & LIBRARIES
 rm(list=ls())
 
@@ -30,6 +29,16 @@ library(rpart)
 library(rpart.plot)
 library(scales)
 
+
+# source helper functions
+# note: getwd() returns the R project home directory which may be different from 
+# your actual directory (you can work in a different directory from wher your 
+# R project is located). to get the actual directory of your current file use: 
+#   dirname(rstudioapi::getSourceEditorContext()$path)
+
+source(paste(dirname(rstudioapi::getSourceEditorContext()$path), 'utils.R', sep = '/'))
+
+# these helper functions define plotting function + summary function for logit
 
 #########################################################################################
 
@@ -117,7 +126,9 @@ ggplot(data = data, aes(x=d1_sales_mil_log, y=d1_sales_mil_log_mod)) +
   scale_y_continuous(limits = c(-3,3), breaks = seq(-3,3, 1))
 
 
-# MODELLING
+###############################################################################################
+#
+# MODELLING PREP
 
 # define variable sets 
 # note: we use the factor variable 'ind2_cat'
@@ -176,7 +187,11 @@ logitvars <- c("sales_mil_log", "sales_mil_log_sq", engvar, engvar2,
 rfvars  <-  c("sales_mil", "d1_sales_mil_log", rawvars, hr, firm, qualityvars)
 
 
-# simplest model X1
+###############################################################################################
+#
+# MODELLING
+
+# using model X2
 # linear probability
 
 ols_modelx2 <- lm(formula(paste0("default ~", paste0(X2, collapse = " + "))),
@@ -193,20 +208,31 @@ summary(glm_modelx2)
 
 mx2 <- margins(glm_modelx2, vce = "none")
 
-sum_table <- summary(glm_modelx2) %>%
+glm_coeffs <- summary(glm_modelx2) %>%
   coef() %>%
   as.data.frame() %>%
   select(Estimate) %>%
   mutate(factor = row.names(.)) %>%
   merge(summary(mx2)[,c("factor","AME")])
 
-sum_table
+glm_coeffs
 
 
 
-# separate datasets -------------------------------------------------------
+# steps
+# 1. Probabilities: logit & LASSO, compare CV RMSE
+# 2. Classification
+#   a) find the threshold value
+#   b) calculate the matching confusion matrix, ROC & AUC
+#   c) refresh calibration curve
+# 3. Use a user-defined loss function
+#   a) cross-validation of your loss function using the Youden-index
+#   b) find the optimal threshold for your loss function
+# 4. CART & random forest in two ways:
+#   4.1 averaging terminal leaf probabilities
+#   4.2 classification by majority vote
 
-set.seed(13505)
+set.seed(20230208)
 
 train_indices <- as.integer(createDataPartition(data$default, p = 0.8, list = FALSE))
 data_train <- data[train_indices, ]
@@ -217,13 +243,11 @@ dim(data_holdout)
 
 Hmisc::describe(data$default_f)
 Hmisc::describe(data_train$default_f)
-Hmisc::describe(data_holdout
-                $default_f)
+Hmisc::describe(data_holdout$default_f)
 
-#######################################################x
-# PART I PREDICT PROBABILITIES
-# Predict logit models ----------------------------------------------
-#######################################################x
+
+# STEP I: PROBABILITIES
+# logit models 
 
 # 5 fold cross-validation
 train_control <- trainControl(
@@ -233,9 +257,14 @@ train_control <- trainControl(
   summaryFunction = twoClassSummaryExtended,
   savePredictions = TRUE
 )
+# note: the 'metric' argument for the **train()** function specifies what 
+#   summary metric will be used to select the optimal model. By default, 
+#   possible values are "RMSE" and "Rsquared" for regression and "Accuracy" 
+#   and "Kappa" for classification. 
+#   Custom performance metrics can be used via the 'summaryFunction' argument
+#   of in 'trainControl()'. 
 
-
-# Train Logit Models ----------------------------------------------
+# all logit models 
 
 logit_model_vars <- list("X1" = X1, "X2" = X2, "X3" = X3, "X4" = X4, "X5" = X5)
 
@@ -245,8 +274,10 @@ logit_models <- list()
 for (model_name in names(logit_model_vars)) {
 
   features <- logit_model_vars[[model_name]]
-
-  set.seed(13505)
+  
+  print(paste0('Model: ', model_name, ', number of features: ', length(features)))
+  
+  set.seed(20230208)
   glm_model <- train(
     formula(paste0("default_f ~", paste0(features, collapse = " + "))),
     method = "glm",
@@ -258,15 +289,16 @@ for (model_name in names(logit_model_vars)) {
   logit_models[[model_name]] <- glm_model
   # Calculate RMSE on test for each fold
   CV_RMSE_folds[[model_name]] <- glm_model$resample[,c("Resample", "RMSE")]
-
+  print(paste0('CV RMSE: ', glm_model$resample$RMSE))
+  print('  ')
 }
 
-# Logit lasso -----------------------------------------------------------
+# lasso 
 
 lambda <- 10^seq(-1, -4, length = 10)
 grid <- expand.grid("alpha" = 1, lambda = lambda)
 
-set.seed(13505)
+set.seed(20230208)
 system.time({
   logit_lasso_model <- train(
     formula(paste0("default_f ~", paste0(logitvars, collapse = " + "))),
@@ -284,17 +316,16 @@ tuned_logit_lasso_model <- logit_lasso_model$finalModel
 best_lambda <- logit_lasso_model$bestTune$lambda
 logit_models[["LASSO"]] <- logit_lasso_model
 lasso_coeffs <- as.matrix(coef(tuned_logit_lasso_model, best_lambda))
-write.csv(lasso_coeffs, paste0(output, "lasso_logit_coeffs.csv"))
+
 
 CV_RMSE_folds[["LASSO"]] <- logit_lasso_model$resample[,c("Resample", "RMSE")]
 
 
-#############################################x
-# PART I
-# No loss fn
-########################################
 
-# Draw ROC Curve and calculate AUC for each folds --------------------------------
+# STEP 2 CLASSIFICATION
+# no loss function
+
+# draw ROC Curve and calculate AUC for each folds 
 CV_AUC_folds <- list()
 
 for (model_name in names(logit_models)) {
