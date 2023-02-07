@@ -42,6 +42,7 @@ source(paste(dirname(rstudioapi::getSourceEditorContext()$path), 'utils.R', sep 
 
 # these helper functions define plotting function + summary function for logit
 
+
 #########################################################################################
 
 # DATA IMPORT, EDA & FEATURES
@@ -85,7 +86,8 @@ ggplot(
   scale_color_manual(values = colors) + 
   theme_bw()
 
-# Finding a relationship between sales growth and default using original
+
+# finding a relationship between sales growth and default using original
 #   and winsorized/clipped sales values
 
 # original sales data
@@ -126,6 +128,7 @@ ggplot(data = data, aes(x=d1_sales_mil_log, y=d1_sales_mil_log_mod)) +
   theme_bw() +
   scale_x_continuous(limits = c(-5,5), breaks = seq(-5,5, 1)) +
   scale_y_continuous(limits = c(-3,3), breaks = seq(-3,3, 1))
+
 
 
 ###############################################################################################
@@ -189,9 +192,11 @@ logitvars <- c("sales_mil_log", "sales_mil_log_sq", engvar, engvar2,
 rfvars  <-  c("sales_mil", "d1_sales_mil_log", rawvars, hr, firm, qualityvars)
 
 
+
 ###############################################################################################
 #
 # MODELLING
+
 
 # using model X2
 # linear probability
@@ -221,20 +226,24 @@ glm_coeffs
 
 
 
-# steps
+# FURTHER STEPS
 # 1. Probabilities: logit & LASSO, compare CV RMSE
-# 2. Classification
-#   a) find the threshold value
-#   b) calculate the matching confusion matrix, ROC & AUC
-#   c) refresh calibration curve
+# 2. Classification without a loss function
+#   2.1 calibration plot
+#   2.2 confusion matrix
+#   2.3 ROC curve
+#     a) by hand
+#     b) autoplot using roc() function attributes
+#   2.4 compare models using average CV RMSE & AUC
 # 3. Use a user-defined loss function
-#   a) cross-validation of your loss function using the Youden-index
-#   b) find the optimal threshold for your loss function
+#   3.1 cross-validation of your loss function using the Youden-index
+#   3.2 find the optimal threshold for your loss function
 # 4. CART & random forest in two ways:
-#   4.1 averaging terminal leaf probabilities
-#   4.2 classification by majority vote
+#   4.1 simple CART
+#   4.2.1 averaging terminal leaf probabilities
+#   4.2.2 classification by majority vote
 
-set.seed(20230208)
+set.seed(13505)
 
 train_indices <- as.integer(createDataPartition(data$default, p = 0.8, list = FALSE))
 data_train <- data[train_indices, ]
@@ -248,8 +257,11 @@ Hmisc::describe(data_train$default_f)
 Hmisc::describe(data_holdout$default_f)
 
 
+
+#
 # STEP I: PROBABILITIES
 # logit models 
+
 
 # 5 fold cross-validation
 train_control <- trainControl(
@@ -266,15 +278,18 @@ train_control <- trainControl(
 #   Custom performance metrics can be used via the 'summaryFunction' argument
 #   of in 'trainControl()'. 
 
+
 # all logit models 
 
 logit_model_vars <- list("X1" = X1, "X2" = X2, "X3" = X3, "X4" = X4, "X5" = X5)
+
 
 # calculate metrics and store them in containers
 
 logit_models <- list()
 CV_RMSE_folds <- list()
 CV_AUC_folds <- list()
+
 
 # run models and get RMSE for each fold for each model
 
@@ -284,7 +299,7 @@ for (model_name in names(logit_model_vars)) {
   
   print(paste0('Model: ', model_name, ', number of features: ', length(features)))
   
-  set.seed(20230208)
+  set.seed(13505)
   glm_model <- train(
     formula(paste0("default_f ~", paste0(features, collapse = " + "))),
     method = "glm",
@@ -300,12 +315,13 @@ for (model_name in names(logit_model_vars)) {
   print('  ')
 }
 
+
 # lasso 
 
 lambda <- 10^seq(-1, -4, length = 10)
 grid <- expand.grid("alpha" = 1, lambda = lambda)
 
-set.seed(20230208)
+set.seed(13505)
 system.time({
   logit_lasso_model <- train(
     formula(paste0("default_f ~", paste0(logitvars, collapse = " + "))),
@@ -325,6 +341,7 @@ logit_models[["LASSO"]] <- logit_lasso_model
 lasso_coeffs <- as.matrix(coef(tuned_logit_lasso_model, best_lambda))
 
 CV_RMSE_folds[["LASSO"]] <- logit_lasso_model$resample[,c("Resample", "RMSE")]
+
 
 # calculate AUC for each model for each fold
 
@@ -348,6 +365,7 @@ for (model_name in names(logit_models)) {
 }
 
 
+#
 # STEP 2 CLASSIFICATION
 # no loss function
 # calibration plot, confusion matrix, ROC, AUC
@@ -360,6 +378,7 @@ logit_predicted_probabilities_holdout <- predict(
 data_holdout[,"best_logit_no_loss_pred"] <- logit_predicted_probabilities_holdout[,"default"]
 RMSE(data_holdout[, "best_logit_no_loss_pred", drop=TRUE], data_holdout$default)
 
+
 # 2.1 calibration plot: how did we do in predicting the probabilities?
 
 create_calibration_plot(
@@ -368,11 +387,13 @@ create_calibration_plot(
   actual_var = "default",
   n_bins = 10)
 
+
 # 2.2 confusion matrix
 # default threshold: 0.5
 
 logit_class_prediction <- predict(best_logit_no_loss, newdata = data_holdout)
 summary(logit_class_prediction)
+
 
 # positive = "yes": explicitly specify the positive case
 cm_object_1a <- confusionMatrix(logit_class_prediction, as.factor(data_holdout$default_f), positive = "default")
@@ -445,6 +466,7 @@ ggplot(
         legend.text = element_text(size = 4),
         legend.key.size = unit(.4, "cm")) 
 
+
 # b) autogenerate ROC curve using roc() function attributes
 
 roc_obj_holdout <- roc(data_holdout$default, data_holdout$best_logit_no_loss_pred, quiet = T)
@@ -467,8 +489,9 @@ ggplot(data = roc_df, aes(x = FPR, y = TPR)) +
   scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, .1), expand = c(0.01, 0)) +
   theme_bw()
 
-# 2.4 pick the best model based on average CV  RMSE and average AUC for 
-#   we have 5 logit models + 1 lasso
+
+# 2.4 compare models based on average CV  RMSE and average AUC for 
+#   5 logit models + lasso
 
 CV_RMSE <- list()
 CV_AUC <- list()
@@ -487,6 +510,7 @@ logit_summary_no_loss_function <- data.frame(
   "CV AUC" = unlist(CV_AUC))
 
 
+#
 # STEP 3: USER-DEFINED LOSS FUNCTION
 # relative cost of of a false negative classification (as compared with a false positive classification)
 
@@ -497,6 +521,7 @@ cost = FN/FP
 # the prevalence, or the proportion of cases in the population (n.cases/(n.controls+n.cases))
 
 prevelance = sum(data_train$default)/length(data_train$default)
+
 
 # ROC curve help us find the optimal threshold with regard to the loss function
 
@@ -531,16 +556,19 @@ for (model_name in names(logit_models)) {
     expected_loss_cv[[fold]] <- (best_treshold$fp*FP + best_treshold$fn*FN)/length(cv_fold$default)
   }
 
-  # average
+  # average thresholds and losses from each fold
   best_tresholds[[model_name]] <- mean(unlist(best_tresholds_cv))
   expected_loss[[model_name]] <- mean(unlist(expected_loss_cv))
 
-  # for fold #5
+  # at the end of the loop it will store data for fold #5
   logit_cv_rocs[[model_name]] <- roc_obj
   logit_cv_threshold[[model_name]] <- best_treshold
   logit_cv_expected_loss[[model_name]] <- expected_loss_cv[[fold]]
 
-  }
+}
+
+# note: Youden index is J = sensitivity + specificity - 1 = TPR + TNR - 1
+# we are looking for the threshold which produces the maximum J for our model
 
 logit_summary_with_loss_function <- data.frame(
       "Avg of optimal thresholds" = unlist(best_tresholds),
@@ -551,8 +579,8 @@ logit_summary_with_loss_function <- data.frame(
 
 # loss plot for model X4
 
-r <- logit_cv_rocs[["X5"]]
-best_coords <- logit_cv_threshold[["X5"]]
+r <- logit_cv_rocs[["X4"]]
+best_coords <- logit_cv_threshold[["X4"]]
 
 t <- best_coords$threshold[1]
 sp <- best_coords$specificity[1]
@@ -581,25 +609,34 @@ ggplot(
     label= round(l, 2), hjust = -0.3, size = 5) +
   theme_bw()
 
-
 best_logit_with_loss <- logit_models[["X4"]]
 best_logit_optimal_treshold <- best_tresholds[["X4"]]
 
-# Predict the probabilities on holdout
+
+# predict the probabilities on holdout
 logit_predicted_probabilities_holdout      <- predict(best_logit_with_loss, newdata = data_holdout, type = "prob")
 data_holdout[,"best_logit_with_loss_pred"] <- logit_predicted_probabilities_holdout[,"default"]
+
 
 # ROC curve on holdout
 roc_obj_holdout <- roc(data_holdout$default, data_holdout[, "best_logit_with_loss_pred", drop=TRUE],quiet = TRUE)
 
-# Get expected loss on holdout:
-holdout_treshold <- coords(roc_obj_holdout, x = best_logit_optimal_treshold, input= "threshold",
-                           ret="all", transpose = FALSE)
-# Calculate the expected loss on holdout sample
+
+# get expected loss on holdout:
+holdout_treshold <- coords(
+    roc_obj_holdout, 
+    x = best_logit_optimal_treshold, 
+    input= "threshold",
+    ret="all", 
+    transpose = FALSE)
+
+
+# calculate the expected loss on holdout sample
 expected_loss_holdout <- (holdout_treshold$fp*FP + holdout_treshold$fn*FN)/length(data_holdout$default)
 expected_loss_holdout
 
-# Confusion table on holdout with optimal threshold
+
+# confusion table on holdout with optimal threshold
 holdout_prediction <-
   ifelse(data_holdout$best_logit_with_loss_pred < best_logit_optimal_treshold, "no_default", "default") %>%
   factor(levels = c("no_default", "default"))
@@ -609,14 +646,16 @@ cm_3 = cm_object3$table
 cm_3
 
 
+#
 # STEP 4: CART & random forest
+
 
 # 4.1 simple CART
 
 data_for_graph <- data_train
 levels(data_for_graph$default_f) <- list("stay" = "no_default", "exit" = "default")
 
-set.seed(20230208)
+set.seed(13505)
 rf_for_graph <- rpart(
     formula = default_f ~ sales_mil + profit_loss_year+ foreign_management,
     data = data_for_graph,
@@ -624,6 +663,7 @@ rf_for_graph <- rpart(
   )
 
 rpart.plot(rf_for_graph, tweak=1, digits=2, extra=107, under = TRUE)
+
 
 # 4.2.1 random forest for probabilities
 # split by Gini, average terminal leaf results for eahc obs over trees
@@ -637,14 +677,20 @@ train_control <- trainControl(
   verboseIter = TRUE
 )
 
-# optionally, you can go for grid sarch
 tune_grid <- expand.grid(
-  .mtry = 5, # c(5, 6, 7),
+  .mtry = 5, 
   .splitrule = "gini",
-  .min.node.size = 15 # c(10, 15)
+  .min.node.size = 15 
 )
 
-set.seed(20230208)
+# optionally, you can go for grid sarch
+# tune_grid <- expand.grid(
+#   .mtry = c(5, 6, 7),
+#   .splitrule = "gini",
+#   .min.node.size = c(10, 15)
+# )
+
+set.seed(13505)
 rf_model_p <- train(
   formula(paste0("default_f ~ ", paste0(rfvars , collapse = " + "))),
   method = "ranger",
@@ -657,6 +703,7 @@ rf_model_p$results
 
 best_mtry <- rf_model_p$bestTune$mtry
 best_min_node_size <- rf_model_p$bestTune$min.node.size
+
 
 # add metrics (RMSE, AUC) to metric containers
 
@@ -676,6 +723,7 @@ CV_AUC_folds[["rf_p"]] <- data.frame("Resample" = names(auc),
 
 CV_RMSE[["rf_p"]] <- mean(CV_RMSE_folds[["rf_p"]]$RMSE)
 CV_AUC[["rf_p"]] <- mean(CV_AUC_folds[["rf_p"]]$AUC)
+
 
 # use the loss function 
 
@@ -698,6 +746,7 @@ for (fold in c("Fold1", "Fold2", "Fold3", "Fold4", "Fold5")) {
   expected_loss_cv[[fold]] <- (best_treshold$fp*FP + best_treshold$fn*FN)/length(cv_fold$default)
 }
 
+
 # average loss over the folds & the last fold
 
 best_tresholds[["rf_p"]] <- mean(unlist(best_tresholds_cv))
@@ -712,10 +761,12 @@ rf_summary <- data.frame("CV RMSE" = CV_RMSE[["rf_p"]],
 
 rf_summary
 
+
 # plot loss and roc for fold5 
 
 createLossPlot(roc_obj, best_treshold, "rf_p_loss_plot")
 createRocPlotWithOptimal(roc_obj, best_treshold, "rf_p_roc_plot")
+
 
 # estimate RMSE, AUC & loss on the holdout data
 
@@ -723,9 +774,11 @@ rf_predicted_probabilities_holdout <- predict(rf_model_p, newdata = data_holdout
 data_holdout$rf_p_prediction <- rf_predicted_probabilities_holdout[,"default"]
 RMSE(data_holdout$rf_p_prediction, data_holdout$default)
 
+
 # ROC curve on holdout
 
 roc_obj_holdout <- roc(data_holdout$default, data_holdout[, "rf_p_prediction", drop=TRUE], quiet=TRUE)
+
 
 # AUC
 
@@ -771,7 +824,7 @@ train_control <- trainControl(
   verboseIter = TRUE
 )
 
-set.seed(20230208)
+set.seed(13505)
 rf_model_f <- train(
   formula(paste0("default_f ~ ", paste0(rfvars , collapse = " + "))),
   method = "ranger",
@@ -779,6 +832,7 @@ rf_model_f <- train(
   tuneGrid = tune_grid,
   trControl = train_control
 )
+
 
 # calculate expected loss by predicting on the holdout set using our loss function
 
