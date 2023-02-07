@@ -70,14 +70,14 @@ createLossPlot <- function(r, best_coords,  myheight_small = 5.625, mywidth_smal
   l <- all_coords[all_coords$threshold == t, "loss"]
   
   loss_plot <- ggplot(data = all_coords, aes(x = threshold, y = loss)) +
-    geom_line(color='red', size=0.7) +
+    geom_line(color='black', size=0.7) +
     scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.1)) +
-    geom_vline(xintercept = t , color = 'blue' ) +
+    geom_vline(xintercept = t , color = 'black', linetype = "dashed" ) +
     annotate(geom = "text", x = t, y= min(all_coords$loss),
              label=paste0("best threshold: ", round(t,2)),
-             colour='blue', angle=90, vjust = -1, hjust = -0.5, size = 7) +
+             colour='black', angle=90, vjust = -1, hjust = -0.5, size = 5) +
     annotate(geom = "text", x = t, y= l,
-             label= round(l, 2), hjust = -0.3, size = 7) +
+             label= round(l, 2), hjust = -0.3, size = 5) +
     theme_bw()
   
   loss_plot
@@ -88,17 +88,17 @@ createRocPlotWithOptimal <- function(r, best_coords, file_name,  myheight_small 
   
   all_coords <- coords(r, x="all", ret="all", transpose = FALSE)
   t <- best_coords$threshold[1]
-  sp <- best_coords$specificity[1]
+  sp <- 1 - best_coords$specificity[1]
   se <- best_coords$sensitivity[1]
   
-  roc_plot <- ggplot(data = all_coords, aes(x = specificity, y = sensitivity)) +
-    geom_line(color='red', size=0.7) +
+  roc_plot <- ggplot(data = all_coords, aes(x = 1- specificity, y = sensitivity)) +
+    geom_line(color='black', size=1) +
     scale_y_continuous(breaks = seq(0, 1, by = 0.1)) +
-    scale_x_reverse(breaks = seq(0, 1, by = 0.1)) +
-    geom_point(aes(x = sp, y = se)) +
+    scale_y_continuous(breaks = seq(0, 1, by = 0.1)) +
+    geom_point(aes(x = sp, y = se), size = 5) +
     annotate(geom = "text", x = sp, y = se,
              label = paste(round(sp, 2),round(se, 2),sep = ", "),
-             hjust = 1, vjust = -1, size = 7) +
+             hjust = 1, vjust = -1, size = 4) +
     xlab("False Positive Rate (1-Specifity)") +
     ylab("True Positive Rate (Sensitivity)") +
     theme_bw()
