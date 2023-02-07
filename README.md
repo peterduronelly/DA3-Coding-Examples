@@ -50,3 +50,13 @@ Comparing OLS, LASSO, CART, and random forest<br>
 Gradient Boosting Machines: tuning and model run<br>
 Hitters: parameter grid search on a smaller and easier-to-handle dataset<br>
 The airbnb analysis is implemented both in R and in Python using a Jupyter notebook<br>
+
+5. **class 17, bisnode**<br>
+Modelling probabilities with simple & lasso logit<br>
+CV RMSE & AUC for probability models<br>
+Classification using logit with no loss function<br>
+Calibration plot, confusion matrix, ROC, AUC<br>
+Classification (logit) with user-defined loss function<br>
+Classification with CART<br>
+Random forest for probabilities, with and without a loss function<br>
+Classification with random forest<br>
