@@ -24,8 +24,6 @@ library(viridis)
 library(rattle)
 library(caret)
 library(pROC)
-# install.packages("ROCR")
-library(ROCR)
 library(ranger)
 library(rpart)
 library(rpart.plot)
@@ -118,7 +116,7 @@ ggplot(
     x = "Growth rate (Diff of ln sales)",y = "default", 
     title = 'Annual growth in sales vs defaults - winsorized (clipped) data') +
   theme_bw() +
-  scale_x_continuous(limits = c(-6,10), breaks = seq(-5,10, 5))
+  scale_x_continuous(limits = c(-3,3), breaks = seq(-3,3, 6))
 
 # Where did we clip the data?
 
@@ -243,7 +241,7 @@ glm_coeffs
 #   4.2.1 averaging terminal leaf probabilities
 #   4.2.2 classification by majority vote
 
-set.seed(13505)
+set.seed(20230208)
 
 train_indices <- as.integer(createDataPartition(data$default, p = 0.8, list = FALSE))
 data_train <- data[train_indices, ]
@@ -299,7 +297,7 @@ for (model_name in names(logit_model_vars)) {
   
   print(paste0('Model: ', model_name, ', number of features: ', length(features)))
   
-  set.seed(13505)
+  set.seed(20230208)
   glm_model <- train(
     formula(paste0("default_f ~", paste0(features, collapse = " + "))),
     method = "glm",
@@ -321,7 +319,7 @@ for (model_name in names(logit_model_vars)) {
 lambda <- 10^seq(-1, -4, length = 10)
 grid <- expand.grid("alpha" = 1, lambda = lambda)
 
-set.seed(13505)
+set.seed(20230208)
 system.time({
   logit_lasso_model <- train(
     formula(paste0("default_f ~", paste0(logitvars, collapse = " + "))),
@@ -420,8 +418,8 @@ holdout_prediction <-
   ifelse(data_holdout$best_logit_no_loss_pred < mean_predicted_default_prob, "no_default", "default") %>%
   factor(levels = c("no_default", "default"))
 cm_object_2 <- confusionMatrix(holdout_prediction,as.factor(data_holdout$default_f))
-cm2 <- cm_object_2$table
-cm2
+cm_2 <- cm_object_2$table
+cm_2
 
 
 # 2.3 plot ROC curve
@@ -567,7 +565,8 @@ for (model_name in names(logit_models)) {
 
 }
 
-# note: Youden index is J = sensitivity + specificity - 1 = TPR + TNR - 1
+# note: no-loss-function Youden index is J = sensitivity + specificity - 1 = TPR + TNR - 1
+# Youden with a loss function is: J = sensitivity + specificity - 1 = TPR + TNR * (1 - prevalence) / (cost * prevalence)
 # we are looking for the threshold which produces the maximum J for our model
 
 logit_summary_with_loss_function <- data.frame(
@@ -576,45 +575,12 @@ logit_summary_with_loss_function <- data.frame(
       "Avg expected loss" = unlist(expected_loss),
       "Expected loss for Fold5" = unlist(logit_cv_expected_loss))
 
-
-# loss plot for model X4
-
-r <- logit_cv_rocs[["X4"]]
-best_coords <- logit_cv_threshold[["X4"]]
-
-t <- best_coords$threshold[1]
-sp <- best_coords$specificity[1]
-se <- best_coords$sensitivity[1]
-n <- rowSums(best_coords[c("tn", "tp", "fn", "fp")])[1]
-
-all_coords <- coords(r, x="all", ret="all", transpose = FALSE)
-all_coords <- all_coords %>%
-  mutate(loss = (fp*FP + fn*FN)/n)
-l <- all_coords[all_coords$threshold == t, "loss"]
-
-ggplot(
-  data = all_coords, 
-  aes(x = threshold, y = loss)) +
-  geom_line(color='black', size=1) +
-  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, by = 0.1)) +
-  geom_vline(xintercept = t , color = 'blue' ) +
-  annotate(
-    geom = "text", 
-    x = t, y= min(all_coords$loss),
-    label=paste0("best threshold: ", round(t,2)),
-    colour='blue', angle=90, vjust = -1, hjust = -0.5, size = 5) +
-  annotate(
-    geom = "text", 
-    x = t, y= l + 0.1,
-    label= round(l, 2), hjust = -0.3, size = 5) +
-  theme_bw()
-
 best_logit_with_loss <- logit_models[["X4"]]
 best_logit_optimal_treshold <- best_tresholds[["X4"]]
 
 
 # predict the probabilities on holdout
-logit_predicted_probabilities_holdout      <- predict(best_logit_with_loss, newdata = data_holdout, type = "prob")
+logit_predicted_probabilities_holdout <- predict(best_logit_with_loss, newdata = data_holdout, type = "prob")
 data_holdout[,"best_logit_with_loss_pred"] <- logit_predicted_probabilities_holdout[,"default"]
 
 
@@ -655,7 +621,7 @@ cm_3
 data_for_graph <- data_train
 levels(data_for_graph$default_f) <- list("stay" = "no_default", "exit" = "default")
 
-set.seed(13505)
+set.seed(20230208)
 rf_for_graph <- rpart(
     formula = default_f ~ sales_mil + profit_loss_year+ foreign_management,
     data = data_for_graph,
@@ -690,7 +656,7 @@ tune_grid <- expand.grid(
 #   .min.node.size = c(10, 15)
 # )
 
-set.seed(13505)
+set.seed(20230208)
 rf_model_p <- train(
   formula(paste0("default_f ~ ", paste0(rfvars , collapse = " + "))),
   method = "ranger",
@@ -764,7 +730,6 @@ rf_summary
 
 # plot loss and roc for fold5 
 
-createLossPlot(roc_obj, best_treshold, "rf_p_loss_plot")
 createRocPlotWithOptimal(roc_obj, best_treshold, "rf_p_roc_plot")
 
 
@@ -824,7 +789,7 @@ train_control <- trainControl(
   verboseIter = TRUE
 )
 
-set.seed(13505)
+set.seed(20230208)
 rf_model_f <- train(
   formula(paste0("default_f ~ ", paste0(rfvars , collapse = " + "))),
   method = "ranger",
@@ -842,3 +807,10 @@ fp <- sum(data_holdout$rf_f_prediction_class == "default"    & data_holdout$defa
 fn <- sum(data_holdout$rf_f_prediction_class == "no_default" & data_holdout$default_f == "default")
 
 (fp*FP + fn*FN)/length(data_holdout$default)
+
+
+# confusion matriy for random forest classification
+
+cm_object4 <- confusionMatrix(data_holdout$rf_f_prediction_class,as.factor(data_holdout$default_f))
+cm_4 = cm_object4$table
+cm_4
