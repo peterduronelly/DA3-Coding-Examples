@@ -259,6 +259,14 @@ ggplot(
   labs(title = 'Simple linear model with monthly dummies') + 
   theme_bw()
 
+ggplot(
+  data = data_train[data_train$year == 2010,], 
+  aes(x = date)) + 
+  geom_line(aes(y = QUANTITY), color = 'grey') + 
+  geom_line(aes(y = predict(reg1, data_train[data_train$year == 2010,])), color = 'black', size = 0.75) +
+  labs(title = 'Simple linear model with monthly dummies - 2010 only') + 
+  theme_bw()
+
 
 # model 2 linear trend + monthly seasonality + days of week seasonality 
 
@@ -301,6 +309,13 @@ reg3 <- train(
   trControl = train_control
 )
 
+ggplot(
+  data = data_train, 
+  aes(x = date)) + 
+  geom_line(aes(y = QUANTITY), color = 'grey') + 
+  geom_line(aes(y = predict(reg3, data_train)), color = 'black') +
+  labs(title = 'Linear model with monthly + day-of-week + holiday dummies') + 
+  theme_bw()
 
 # model 4 linear trend + monthly seasonality + days of week  seasonality + holidays + sch*dow
 
@@ -313,7 +328,6 @@ reg4 <- train(
   trControl = train_control
 )
 
-
 # model 5 linear trend + monthly seasonality + days of week  seasonality + holidays + interactions
 
 model5 <- as.formula(QUANTITY ~ 1 + trend + month + dow + isHoliday + school_off*dow + weekend*month)
@@ -325,9 +339,18 @@ reg5 <- train(
   trControl = train_control
 )
 
+ggplot(
+  data = data_train, 
+  aes(x = date)) + 
+  geom_line(aes(y = QUANTITY), color = 'grey') + 
+  geom_line(aes(y = predict(reg5, data_train)), color = 'black') +
+  labs(title = 'Linear model with monthly + day-of-week + holiday + school off + interaction') + 
+  theme_bw()
+
 # model 6 =  multiplicative trend and seasonality 
 # note: in case of a multiplicative trend we are taking logs, predict these log values 
-# and transform them back with correction term - see chapter 13 for details)
+# and transform them back with correction term - see chapter 13 for details
+# see how to get the correction term below
 
 model6 <- as.formula(q_ln ~ 1 + trend + month + dow + isHoliday + school_off*dow)
 
@@ -338,15 +361,10 @@ reg6 <- train(
   trControl = train_control
 )
 
-stargazer(reg2$finalModel, reg3$finalModel, reg4$finalModel, reg5$finalModel, 
-          out=paste(output,"Ch18_swim_tsregs.txt",sep=""), type = "text", digits=2)
-
 stargazer(reg2$finalModel, reg3$finalModel, reg4$finalModel, reg5$finalModel, type = "text", digits=2)
 
-stargazer(reg6$finalModel, 
-          out=paste(output,"Ch18_swim_tsregs2.txt",sep=""), type = "text", digits=2)
 
-# Get CV RMSE ----------------------------------------------
+# Cross-validated RMSE 
 
 model_names <- c("reg1","reg2","reg3","reg4","reg5")
 rmse_CV <- c()
@@ -356,38 +374,46 @@ for (i in model_names) {
 }
 rmse_CV
 
-#had to cheat and use train error on full train set because could not obtain CV fold train errors
-corrb <- mean((reg6$finalModel$residuals)^2)
+# we are cheating here by computing RMSE on the full train dataset 
+# because could not obtain CV fold train errors
+
+correction_term <- mean(reg6$finalModel$residuals^2)
+
 rmse_CV["reg6"] <- reg6$pred %>% 
-  mutate(pred = exp(pred  + corrb/2)) %>% 
+  mutate(pred = exp(pred  + correction_term/2)) %>% 
   group_by(Resample) %>% 
   summarise(rmse = RMSE(pred, exp(obs))) %>% 
   as.data.frame() %>% 
   summarise(mean(rmse)) %>% 
   as.numeric()
-rmse_CV["reg6"] 
 
-# Use prophet prediction -------------------------------------------
-# add CV into prophet
-# can be done with prophet: https://facebook.github.io/prophet/docs/diagnostics.html
-# done but this is a different cross-validation as for the other models as it must be time-series like
+rmse_CV
+
+# predicting with fbProphet
+# tutorial here: https://facebook.github.io/prophet/docs/quick_start.html#r-api
+# a quick intro to Fourier Transformation is available here: https://www.youtube.com/watch?v=spUNpyF58BY
 
 # prophet -  multiplicative option -- tried but produced much worse results (~34. RMSE)
 
-
-model_prophet <- prophet( fit=F, 
-                          seasonality.mode = "additive", 
-                          yearly.seasonality = "auto",
-                          weekly.seasonality = "auto",
-                          growth = "linear",
-                          daily.seasonality=TRUE)
+model_prophet <- prophet(fit=F, 
+                         seasonality.mode = "additive", 
+                         yearly.seasonality = "auto",
+                         weekly.seasonality = "auto",
+                         growth = "linear",
+                         daily.seasonality=TRUE)
 
 model_prophet <-  add_country_holidays(model_prophet, "US")
-model_prophet <- fit.prophet(model_prophet, df= data.frame(ds = data_train$date,
-                                                           y = data_train$QUANTITY ))
+
+model_prophet <- fit.prophet(model_prophet, 
+                             df= data.frame(
+                               ds = data_train$date,
+                               y = data_train$QUANTITY )
+                             )
 
 cv_pred <- cross_validation(model_prophet, initial = 365, period = 365, horizon = 365, units = 'days')
+
 rmse_prophet_cv <- performance_metrics(cv_pred, rolling_window = 1)$rmse
+
 rmse_prophet_cv
 
 ###########################x
