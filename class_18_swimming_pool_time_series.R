@@ -416,21 +416,23 @@ rmse_prophet_cv <- performance_metrics(cv_pred, rolling_window = 1)$rmse
 
 rmse_prophet_cv
 
-###########################x
-# Evaluate best model on holdout set --------------------------------------------
-###########################x
+
+#########################################################################################
+#
+# DIAGNOSTICS
 
 data_holdout <- data_holdout %>% 
   mutate(y_hat_5 = predict(reg5, newdata = .))
 
 rmse_holdout_best <- RMSE(data_holdout$QUANTITY, data_holdout$y_hat_5)
+
 rmse_holdout_best
 
-###########################x
-# Plot best predictions --------------------------------------------
-###########################x
 
-#graph relative RMSE (on holdout) per month 
+# plot best predictions
+
+# relative RMSE (on holdout) per month 
+
 rmse_monthly <- data_holdout %>% 
   mutate(month = factor(format(date,"%b"), 
                         levels= unique(format(sort(.$date),"%b")), 
@@ -441,71 +443,37 @@ rmse_monthly <- data_holdout %>%
     RMSE_norm= RMSE(QUANTITY, y_hat_5)/mean(QUANTITY)
             ) 
 
-g_predictions_rmse<- ggplot(rmse_monthly, aes(x = month, y = RMSE_norm)) +
-  geom_col(bg=color[1], color=color[1]) +
-  labs( x = "Date (month)", y="RMSE (normalized by monthly sales)" ) +
-    theme_bg() 
-g_predictions_rmse
-#save_fig("ch18_swim_predictions_rmse", output, "small")
-save_fig("ch18-figure-7b-swim-predictions-rmse", output, "small", plot=g_predictions_rmse)
+rmse_monthly %>% as.data.frame()
 
-g_predictions<-
-  ggplot(data=data_holdout, aes(x=date, y=QUANTITY)) +
+# plot 
+
+ggplot(rmse_monthly, aes(x = month, y = RMSE_norm)) +
+  geom_col(bg='black', color='black') +
+  labs( x = "date (month)", y="RMSE / monthly average sales",
+        title = 'RMSE to average monthly sales') +
+  theme_bw() 
+
+
+# prediction on the holdout set, August 2016
+
+ggplot(data=data_holdout %>% filter(month==8), aes(x=date, y=QUANTITY)) +
   geom_line(aes(size="Actual", colour="Actual", linetype = "Actual") ) +
   geom_line(aes(y=y_hat_5, size="Predicted" ,colour="Predicted",  linetype= "Predicted")) +
-  scale_y_continuous(expand = c(0,0))+
-  scale_x_date(expand=c(0,0), breaks = as.Date(c("2016-01-01","2016-03-01","2016-05-01","2016-07-01","2016-09-01","2016-11-01", "2017-01-01")),
-               labels = date_format("%d%b%Y"),
-               date_minor_breaks = "1 month" )+
-  scale_color_manual(values=color[1:2], name="")+
-  scale_size_manual(name="", values=c(0.4,0.7))+
-  #scale_linetype_manual(name = "", values=c("solid", "solid")) +
-  scale_linetype_manual(name = "", values=c("solid", "twodash")) +
-  labs( x = "Date (day)", y="Daily ticket sales" ) +
-  theme_bg() +
-  #theme(legend.position = "none") +
-  #annotate("text", x = as.Date("2016-07-15"), y = 50, label = "Predicted", color=color[2], size=3)+
-  #annotate("text", x = as.Date("2016-09-01"), y = 125, label = "Actual", color=color[1], size=3)
-  theme(legend.position=c(0.7,0.8),
-      legend.direction = "horizontal",
-      legend.text = element_text(size = 6),
-      legend.key.width = unit(.8, "cm"),
-      legend.key.height = unit(.3, "cm")) + 
-  guides(linetype = guide_legend(override.aes = list(size = 0.8))
-         )
-g_predictions
-#save_fig("ch18_swim_predictions", output, "large")
-save_fig("ch18-figure-6-swim-predictions", output, "large", plot=g_predictions)
-
-
-g_predictions_m <- ggplot(data=data_holdout %>% filter(month==8), aes(x=date, y=QUANTITY)) +
-  geom_line(aes(size="Actual", colour="Actual", linetype = "Actual") ) +
-  geom_line(aes(y=y_hat_5, size="Predicted" ,colour="Predicted",  linetype= "Predicted")) +
-  geom_ribbon(aes(ymin=QUANTITY,ymax=y_hat_5), fill=color[4], alpha=0.3) +
+  geom_ribbon(aes(ymin=QUANTITY,ymax=y_hat_5), fill='grey', alpha=0.3) +
   scale_y_continuous(expand = c(0.01,0.01), limits = c(0,150))+
   scale_x_date(expand=c(0.01,0.01), breaks = as.Date(c("2016-08-01","2016-08-08","2016-08-15","2016-08-22","2016-08-29")),
                limits = as.Date(c("2016-08-01","2016-08-31")),
-               labels = date_format("%d%b")) +
-  scale_color_manual(values=color[1:2], name="")+
-  scale_size_manual(name="", values=c(0.4,0.7))+
-  #scale_linetype_manual(name = "", values=c("solid", "solid")) +
-  scale_linetype_manual(name = "", values=c("solid", "twodash")) +
-  labs( x = "Date (day)", y="Daily ticket sales" ) +
-  theme_bg() +
-  #theme(legend.position = "none") +
-  #annotate("text", x = as.Date("2016-08-04"), y = 55, label = "Actual", color=color[2], size=2)+
-  #annotate("text", x = as.Date("2016-08-17"), y = 115, label = "Predicted", color=color[1], size=2)
+               labels = date_format("%m-%d")) +
+  scale_color_manual(values=c('black','blue'), name="")+
+  scale_size_manual(name="", values=c(1, 1))+
+  scale_linetype_manual(name = "", values=c("solid", "F1")) +
+  labs( x = "date (day)", y="daily ticket sales" ) +
+  theme_bw() +
   theme(legend.position=c(0.7,0.8),
         legend.direction = "horizontal",
-        legend.text = element_text(size = 4),
-        legend.key.width = unit(.8, "cm"),
-        legend.key.height = unit(.2, "cm")) + 
+        legend.text = element_text(size = 10),
+        legend.key.width = unit(1.8, "cm"),
+        legend.key.height = unit(1.2, "cm")) + 
   guides(linetype = guide_legend(override.aes = list(size = 0.6))
   )
-g_predictions_m
-#save_fig("ch18_swim_predictions_m", output, "small")
-save_fig("ch18-figure-7a-swim-predictions-m", output, "small", plot=g_predictions_m)
 
-#ch18-table-1-swim-rmse
-#ch18-table-2-cs-models-rmse
-#ch18-table-3-arima-folds
