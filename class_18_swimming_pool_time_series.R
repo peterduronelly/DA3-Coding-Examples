@@ -457,17 +457,17 @@ ggplot(rmse_monthly, aes(x = month, y = RMSE_norm)) +
 # prediction on the holdout set, August 2016
 
 ggplot(data=data_holdout %>% filter(month==8), aes(x=date, y=QUANTITY)) +
-  geom_line(aes(size="Actual", colour="Actual", linetype = "Actual") ) +
-  geom_line(aes(y=y_hat_5, size="Predicted" ,colour="Predicted",  linetype= "Predicted")) +
-  geom_ribbon(aes(ymin=QUANTITY,ymax=y_hat_5), fill='grey', alpha=0.3) +
+  geom_line(aes(size="actual", colour="actual", linetype = "actual") ) +
+  geom_line(aes(y=y_hat_5, size="predicted" ,colour="predicted",  linetype= "predicted")) +
+  geom_ribbon(aes(ymin=QUANTITY,ymax=y_hat_5), fill='grey', alpha=0.6) +
   scale_y_continuous(expand = c(0.01,0.01), limits = c(0,150))+
   scale_x_date(expand=c(0.01,0.01), breaks = as.Date(c("2016-08-01","2016-08-08","2016-08-15","2016-08-22","2016-08-29")),
                limits = as.Date(c("2016-08-01","2016-08-31")),
-               labels = date_format("%m-%d")) +
+               labels = date_format("%m/%d")) +
   scale_color_manual(values=c('black','blue'), name="")+
   scale_size_manual(name="", values=c(1, 1))+
   scale_linetype_manual(name = "", values=c("solid", "F1")) +
-  labs( x = "date (day)", y="daily ticket sales" ) +
+  labs( x = "date", y="daily ticket sales" ) +
   theme_bw() +
   theme(legend.position=c(0.7,0.8),
         legend.direction = "horizontal",
