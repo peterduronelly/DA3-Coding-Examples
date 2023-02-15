@@ -13,8 +13,7 @@
 rm(list=ls())
 
 library(tidyverse)
-# install.packages("fpp3")
-library(fpp3) # datasets
+library(fpp3)
 library(cowplot)
 library(scales)
 library(gridExtra)
@@ -93,9 +92,10 @@ data <- data %>%
 data <- data %>% as_tsibble(index=date)
 
 # note:  Built on top of the tibble, a tsibble (or tbl_ts) is a data- and model-oriented object. 
-#   Beyond the tibble-like representation, key comprised of single or multiple variables is 
-#   introduced to uniquely identify observational units over time (index). 
-#   The tsibble package aims at managing temporal data and getting analysis done in a fluent workflow.
+#   The tsibble package provides a 'tbl_ts' class (the 'tsibble') for
+#   temporal data in an data- and model-oriented format. The 'tsibble'
+#   provides tools to easily manipulate and analyse temporal data, such as
+#   filling in time gaps and aggregating over calendar periods.
 #   https://cran.rstudio.com/web/packages/tsibble/vignettes/intro-tsibble.html
 
 # duplicate for later validity check
@@ -226,7 +226,8 @@ m1_formula <- "p ~ month + trend"
 m1 <- TSLM(as.formula(m1_formula))
 
 # note: TSLM comes from the fable package (https://cran.r-project.org/web/packages/fable/fable.pdf)
-#   which It fits a linear model with time series components
+#   which fits a linear model with time series components. The TSLM function returns 
+#   a 'model specification'
 
 
 # m2: p ~ auto ARIMA
@@ -234,10 +235,21 @@ m1 <- TSLM(as.formula(m1_formula))
 m2_pre <- data_work %>%
   model(auto_arima = ARIMA(p ~  PDQ(0,0,0)))
 
-# note: ARIMA() function comes from the pmdarima package, which originally a Python 
-# package, now implemented in R
-# the auto_arima parameter is for the automated discovery of the optimal order for an ARIMA model
-# https://alkaline-ml.com/pmdarima/modules/generated/pmdarima.arima.auto_arima.html#pmdarima.arima.auto_arima
+# note: ARIMA() function comes from the fable package. The auto_arima parameter 
+#   is for the automated discovery of the optimal order for an ARIMA model.
+# 
+# The model() function comes from the fabletools package and it trains specified 
+#   model definition(s) to a datasetto each series within .data (as identified by the key structure). 
+#   The result will be a mable (a model table), which neatly stores the estimated 
+#   models in a tabular structure. Rows of the data identify different series within the data, 
+#   and each model column contains all models from that model definition. 
+#   Each cell in the mable identifies a single model.
+
+
+m2_pre$auto_arima[[1]]$fit$model
+m2_pre$auto_arima[[1]]$fit$par
+m2_pre$auto_arima[[1]]$fit$est
+m2_pre$auto_arima[[1]]$fit$spec
 
 # extracting the optimal AR, I, and MA configs from the model's fit attribute
 p2_auto <- m2_pre$auto_arima[[1]]$fit$spec$p # AR
@@ -326,6 +338,9 @@ forecast_1_4 <- models_1_4 %>%
   mutate(e = p - p_pred) %>%
   ungroup()
 
+# The forecast function allows you to produce future predictions of a time series from fitted models.
+#   If the response variable has been transformed in the model formula, the transformation will be
+#   automatically back-transformed
 
 # get MSE for folds
 

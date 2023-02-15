@@ -155,7 +155,7 @@ ggplot(data=daily_agg[(daily_agg$year>=2010) & (daily_agg$year<=2014),],
 ggplot(
   data=daily_agg, 
     aes(x=month_abb, y=QUANTITY)) +
-  labs( x = "date (month)", y="daily ticket sales", title = 'Monthly sales distribution' ) +
+  labs( x = "month", y="daily ticket sales", title = 'Monthly sales distribution' ) +
   geom_boxplot(color='black',outlier.color = 'darkgrey', outlier.alpha = 0.9, outlier.size = 1) + 
   theme_bw()
 
@@ -172,7 +172,7 @@ ggplot(
   daily_agg, 
     aes(x = dow_abb, y = month_abb, fill = tickets)) +
   geom_tile(colour = "white") +
-  labs(x = 'day of the week', y = 'month', title = 'Interaction heatmap') +
+  labs(x = 'day of the week', y = 'month', title = 'Interaction heatmap - sales') +
   scale_fill_viridis(alpha = 0.7, begin = 1, end = 0.2, direction = 1, option = "D") +
   theme_bw() +
   theme(legend.position = "right",
@@ -226,9 +226,11 @@ train_index_list <- test_index_list %>%
   
 train_control <- trainControl(
   method = "cv",
-  index = train_index_list, #index of train data for each fold
+  index = train_index_list, # index of train data for each fold
   savePredictions = TRUE
 )
+
+# note: with the 'index = ' option we are making cross-validation non-random!
 
 
 ###############################################################################################
@@ -449,7 +451,7 @@ rmse_monthly %>% as.data.frame()
 
 ggplot(rmse_monthly, aes(x = month, y = RMSE_norm)) +
   geom_col(bg='black', color='black') +
-  labs( x = "date (month)", y="RMSE / monthly average sales",
+  labs( x = "month", y="RMSE / monthly average sales",
         title = 'RMSE to average monthly sales') +
   theme_bw() 
 
@@ -476,4 +478,4 @@ ggplot(data=data_holdout %>% filter(month==8), aes(x=date, y=QUANTITY)) +
         legend.key.height = unit(1.2, "cm")) + 
   guides(linetype = guide_legend(override.aes = list(size = 0.6))
   )
-
+4
