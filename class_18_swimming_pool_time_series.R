@@ -66,6 +66,7 @@ daily_agg <- daily_agg %>%
 daily_agg <- daily_agg %>% 
   mutate(trend = c(1:nrow(daily_agg)))
 
+
 # add other US holidays as a dummy variable
 # note: the timeDate library handles and manages date and time objects
 
@@ -252,6 +253,7 @@ reg1 <- train(
 
 reg1
 summary(reg1$finalModel)
+
 
 ggplot(
   data = data_train, 
